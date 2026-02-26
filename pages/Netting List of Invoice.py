@@ -9,7 +9,7 @@ uploaded_file = st.file_uploader("Upload Invoice CSV", type=['csv'])
 if uploaded_file:
     try:
         # 1. Load Data
-        df = pd.read_csv(uploaded_file, dtype={'no_inv': str, 'no_share': str})
+        df = pd.read_csv(uploaded_file, dtype={'no_cust': str, 'no_share': str})
         
         # 2. Cleaning Angka
         for col in ['amt_pay', 'tot_vol']:
@@ -22,8 +22,8 @@ if uploaded_file:
         df['net_amount'] = df.apply(lambda x: x['amt_pay'] if x['bors'] == 'S' else -x['amt_pay'], axis=1)
         
         # Grouping Emiten & Final Client
-        emiten_netting = df.groupby(['no_inv', 'no_share']).agg({'tot_vol': 'sum', 'net_amount': 'sum'}).reset_index()
-        client_final = emiten_netting.groupby('no_inv').agg({'net_amount': 'sum'}).reset_index()
+        emiten_netting = df.groupby(['no_cust', 'no_share']).agg({'tot_vol': 'sum', 'net_amount': 'sum'}).reset_index()
+        client_final = emiten_netting.groupby('no_cust').agg({'net_amount': 'sum'}).reset_index()
         client_final['Status'] = client_final['net_amount'].apply(lambda x: 'Positif (Kredit)' if x >= 0 else 'Negatif (Debit)')
 
         st.success("✅ Data berhasil diproses!")
