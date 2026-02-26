@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+import openpyxl
 
 st.title("📑 List of Invoice Netting")
 
