@@ -86,7 +86,7 @@ if uploaded_file:
         col1, col2 = st.columns(2)
 
         with col1:
-            st.subheader("Netting Standart")
+            st.subheader("Netting Standar")
             # Formatting preview
             s3_display = sheet3_final.copy()
             for col in ['tot_vol', 'Volume_Formula', 'amt_pay']:
