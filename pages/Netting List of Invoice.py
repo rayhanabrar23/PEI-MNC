@@ -2,31 +2,29 @@ import streamlit as st
 import pandas as pd
 import io
 
-# 1. Konfigurasi halaman agar tampilan lebar (Wide Mode)
-st.set_page_config(page_title="List of Invoice Netting", layout="wide")
+# 1. Konfigurasi Halaman
+st.set_page_config(page_title="MNCN - Invoice Netting Complete", layout="wide")
 
-# 2. Header dan Penjelasan Halaman (Mirip SOA Generator)
 st.title("📑 List of Invoice Netting")
-st.info("Aplikasi ini akan mengolah data Invoice untuk menghitung netting per saham (B/S), total IDR per client, serta menerapkan formula volume khusus.")
+st.info("Aplikasi ini mengolah data Invoice untuk netting per saham, total IDR client, dan ringkasan per emiten.")
 
-# 3. Fitur Upload File
 uploaded_file = st.file_uploader("Upload Invoice CSV", type=['csv'])
 
 if uploaded_file:
     try:
-        # 4. Load Data dengan paksa string pada ID agar 0 di depan tidak hilang
+        # 2. Load Data
         df = pd.read_csv(uploaded_file, dtype={'no_cust': str, 'no_share': str, 'bors': str})
         
-        # 5. Pembersihan Angka (Menghapus koma/kutip dan konversi ke angka)
+        # 3. Pembersihan Angka
         for col in ['amt_pay', 'tot_vol']:
             if col in df.columns:
                 df[col] = df[col].astype(str).str.replace(',', '').str.replace('"', '')
                 df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
 
-        # 6. Dasar Perhitungan Netting
-        # amt_pay_net: Buy (+), Sell (-) untuk perhitungan uang
+        # 4. Dasar Perhitungan Netting
+        # amt_pay_net: Buy (+), Sell (-)
         df['amt_pay_net'] = df.apply(lambda x: x['amt_pay'] if x['bors'] == 'B' else -x['amt_pay'], axis=1)
-        # vol_net: Buy (+), Sell (-) untuk perhitungan sisa barang
+        # vol_net: Buy (+), Sell (-)
         df['vol_net'] = df.apply(lambda x: x['tot_vol'] if x['bors'] == 'B' else -x['tot_vol'], axis=1)
 
         # --- SHEET 1: DETAIL BS PER SAHAM ---
@@ -35,71 +33,68 @@ if uploaded_file:
             'amt_pay': 'sum'
         }).reset_index()
 
-        # --- SHEET 2: TOTAL NET PER CLIENT (Grand Total IDR) ---
+        # --- SHEET 2: TOTAL NET PER CLIENT ---
         client_final_net = df.groupby('no_cust').agg({'amt_pay_net': 'sum'}).reset_index()
         client_final_net.rename(columns={'amt_pay_net': 'Grand_Total_Net_IDR'}, inplace=True)
-        
-        # Dataframe khusus untuk preview (dengan format ribuan)
-        client_display = client_final_net.copy()
-        client_display['Grand_Total_Net_IDR'] = client_display['Grand_Total_Net_IDR'].map('{:,.2f}'.format)
 
-        # --- SHEET 3: REPLIKA FORMULA EXCEL ---
-        # A. Hitung Net Volume per Saham per Client
+        # --- SHEET 3: REPLIKA FORMULA EXCEL (Hanya di sisi dominan) ---
         net_vol_calc = df.groupby(['no_cust', 'no_share']).agg({'vol_net': 'sum'}).reset_index()
-        
-        # B. Gabungkan kembali ke detail
         sheet3 = stock_detail_bs.copy()
         sheet3 = sheet3.merge(net_vol_calc, on=['no_cust', 'no_share'], how='left')
         
-        # C. Fungsi Logika Formula Volume (Hanya muncul di sisi yang dominan)
         def apply_formula_logic(row):
             total_net = row['vol_net']
             status = row['bors']
-            if total_net < 0: # Kondisi Net Sell
-                return total_net if status == 'S' else 0
-            elif total_net > 0: # Kondisi Net Buy
-                return total_net if status == 'B' else 0
-            else:
-                return 0
+            if total_net < 0: return total_net if status == 'S' else 0
+            elif total_net > 0: return total_net if status == 'B' else 0
+            else: return 0
 
         sheet3['Volume_Formula'] = sheet3.apply(apply_formula_logic, axis=1)
         sheet3_final = sheet3[['no_cust', 'no_share', 'bors', 'tot_vol', 'Volume_Formula', 'amt_pay']]
+
+        # --- SHEET 4: NETTING PER EMITEN (Murni Per Saham) ---
+        # Mengelompokkan berdasarkan client dan saham saja (B/S digabung)
+        net_emiten = df.groupby(['no_cust', 'no_share']).agg({
+            'vol_net': 'sum',
+            'amt_pay_net': 'sum'
+        }).reset_index()
         
-        # Dataframe khusus untuk preview sheet 3 (dengan format ribuan)
-        sheet3_display = sheet3_final.copy()
-        for col in ['tot_vol', 'Volume_Formula', 'amt_pay']:
-            sheet3_display[col] = sheet3_display[col].map('{:,.2f}'.format)
+        # Rename kolom sesuai dengan screenshot yang kamu kirim
+        net_emiten.rename(columns={
+            'vol_net': 'Net_Volume_Stock', 
+            'amt_pay_net': 'Net_Amount_IDR'
+        }, inplace=True)
 
         st.success("✅ Data Berhasil Diproses!")
 
-        # 7. GENERATE EXCEL (Download Button di taruh di ATAS preview)
+        # 5. Tombol Download di Atas
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_BS_per_Saham')
-            client_final_net.to_excel(writer, index=False, sheet_name='Total_Net_Client')
+            client_final_net.to_excel(writer, index=False, sheet_name='Total_per_Client')
             sheet3_final.to_excel(writer, index=False, sheet_name='Replika_Formula_Volume')
+            net_emiten.to_excel(writer, index=False, sheet_name='Netting_per_Saham')
         
         st.download_button(
-            label="📥 Download Netting Formula Version.xlsx",
+            label="📥 Download Netting Complete Version.xlsx",
             data=output.getvalue(),
-            file_name="MNCN_Netting_Formula.xlsx",
+            file_name="MNCN_Netting_Complete.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        st.divider() # Garis pemisah
-
-        # 8. BAGIAN PREVIEW (Dua kolom berdampingan)
-        st.write("💡 *Gunakan fitur search (kaca pembesar) di pojok kanan tabel untuk mencari data.*")
+        st.divider()
         
-        col1, col2 = st.columns([1, 2])
-
-        with col1:
-            st.subheader("Total Net per Client")
-            st.dataframe(client_display, use_container_width=True, height=500)
-
-        with col2:
-            st.subheader("Recap All Data")
-            st.dataframe(sheet3_display, use_container_width=True, height=500)
+        # 6. Preview Sheet Baru (Netting per Saham)
+        st.subheader("Preview: Netting per Saham (Buy - Sell)")
+        st.write("💡 *Gunakan fitur search untuk memfilter ID Client atau Kode Saham.*")
+        
+        # Menampilkan hasil netting per emiten dengan format ribuan di preview
+        net_emiten_display = net_emiten.copy()
+        for col in ['Net_Volume_Stock', 'Net_Amount_IDR']:
+            net_emiten_display[col] = net_emiten_display[col].map('{:,.2f}'.format)
+            
+        st.dataframe(net_emiten_display, use_container_width=True, height=500)
 
     except Exception as e:
-        st.error(f"Terjadi kesalahan saat pemrosesan: {e}")
+        # Menangani error jika kolom yang diperlukan tidak ada (seperti pada gambar error 'bors')
+        st.error(f"Terjadi kesalahan: Pastikan kolom CSV sudah sesuai. Error: {e}")
