@@ -2,73 +2,81 @@ import streamlit as st
 import pandas as pd
 import io
 
-def process_soa(uploaded_file):
-    try:
-        # 1. Baca data, paksa ClAcNo jadi string agar 00 tidak hilang
-        df = pd.read_csv(uploaded_file, dtype={'ClAcNo': str})
-        
-        # 2. Pembersihan Angka
-        for col in ['DbAmount', 'CrAmount']:
-            if df[col].dtype == 'object':
-                df[col] = df[col].astype(str).str.replace(',', '').str.replace('"', '')
-            df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+st.set_page_config(page_title="List of Invoice Netting", layout="wide")
 
-        # 3. Logika Netting per Client (ClAcNo)
-        summary = df.groupby('ClAcNo').agg({
-            'DbAmount': 'sum',
-            'CrAmount': 'sum'
-        }).reset_index()
+st.title("📑 List of Invoice Netting")
+st.info("Aplikasi ini mengolah data Invoice untuk netting per saham, total IDR client, dan ringkasan per emiten.")
 
-        summary['Ending_Balance'] = summary['CrAmount'] - summary['DbAmount']
-        
-        # Merapikan tampilan angka di preview
-        summary_display = summary.copy()
-        # Menggunakan format ribuan dengan koma dan 2 desimal
-        for col in ['DbAmount', 'CrAmount', 'Ending_Balance']:
-            summary_display[col] = summary_display[col].apply(lambda x: f"{x:,.2f}")
-
-        return summary, summary_display
-
-    except Exception as e:
-        st.error(f"Terjadi kesalahan saat memproses: {e}")
-        return None, None
-
-# --- UI Streamlit ---
-st.set_page_config(page_title="MNCN - SOA Generator", layout="wide") # Layout lebar agar enak dilihat
-
-st.title("📑 MNCN - SOA Generator")
-st.info("Aplikasi ini akan merapikan data SOA dan menghitung Ending Balance per Client.")
-
-uploaded_file = st.file_uploader("Upload file SOA kamu di sini", type=['csv'])
+uploaded_file = st.file_uploader("Upload Invoice CSV", type=['csv'])
 
 if uploaded_file:
-    raw_res, display_res = process_soa(uploaded_file)
-    
-    if raw_res is not None:
-        st.success("✅ Data berhasil diproses!")
+    try:
+        df = pd.read_csv(uploaded_file, dtype={'no_cust': str, 'no_share': str, 'bors': str})
         
-        # --- Bagian Download (Pindah ke Atas) ---
+        for col in ['amt_pay', 'tot_vol']:
+            if col in df.columns:
+                df[col] = df[col].astype(str).str.replace(',', '').str.replace('"', '')
+                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+
+        # Dasar Perhitungan
+        df['amt_pay_net'] = df.apply(lambda x: x['amt_pay'] if x['bors'] == 'B' else -x['amt_pay'], axis=1)
+        df['vol_net'] = df.apply(lambda x: x['tot_vol'] if x['bors'] == 'B' else -x['tot_vol'], axis=1)
+
+        # SHEET 1: DETAIL BS PER SAHAM
+        stock_detail_bs = df.groupby(['no_cust', 'no_share', 'bors']).agg({
+            'tot_vol': 'sum',
+            'amt_pay': 'sum'
+        }).reset_index()
+
+        # SHEET 2: TOTAL NET PER CLIENT
+        client_final_net = df.groupby('no_cust').agg({'amt_pay_net': 'sum'}).reset_index()
+        client_final_net.rename(columns={'amt_pay_net': 'Grand_Total_Net_IDR'}, inplace=True)
+
+        # SHEET 3: REPLIKA FORMULA EXCEL (Hanya muncul di sisi dominan)
+        net_vol_calc = df.groupby(['no_cust', 'no_share']).agg({'vol_net': 'sum'}).reset_index()
+        sheet3 = stock_detail_bs.copy()
+        sheet3 = sheet3.merge(net_vol_calc, on=['no_cust', 'no_share'], how='left')
+        
+        def apply_formula_logic(row):
+            total_net = row['vol_net']
+            status = row['bors']
+            if total_net < 0: return total_net if status == 'S' else 0
+            elif total_net > 0: return total_net if status == 'B' else 0
+            else: return 0
+
+        sheet3['Volume_Formula'] = sheet3.apply(apply_formula_logic, axis=1)
+        sheet3_final = sheet3[['no_cust', 'no_share', 'bors', 'tot_vol', 'Volume_Formula', 'amt_pay']]
+
+        # --- SHEET 4: NETTING PER EMITEN (MURNI BUY - SELL) ---
+        # Ini adalah permintaan terbarumu
+        net_emiten = df.groupby(['no_cust', 'no_share']).agg({
+            'vol_net': 'sum',
+            'amt_pay_net': 'sum'
+        }).reset_index()
+        net_emiten.rename(columns={'vol_net': 'Net_Volume_Stock', 'amt_pay_net': 'Net_Amount_IDR'}, inplace=True)
+
+        st.success("✅ Data Berhasil Diproses!")
+
+        # Generate Excel dengan 4 Sheet
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            raw_res.to_excel(writer, index=False, sheet_name='Ending_Balance')
+            stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_BS_per_Saham')
+            client_final_net.to_excel(writer, index=False, sheet_name='Total_Net_Client')
+            sheet3_final.to_excel(writer, index=False, sheet_name='Replika_Formula_Volume')
+            net_emiten.to_excel(writer, index=False, sheet_name='Netting_per_Emiten')
         
         st.download_button(
-            label="📥 Download File Ending_Balance.xlsx",
+            label="📥 Download Netting Complete Version.xlsx",
             data=output.getvalue(),
-            file_name="Ending_Balance_MNCN.xlsx",
+            file_name="MNCN_Netting_Complete.xlsx",
             mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-        st.divider() # Garis pembatas agar rapi
-
-        # --- Bagian Preview Lengkap dengan Pencarian ---
-        st.subheader("Preview Hasil Ending Balance")
-        st.write("💡 *Gunakan ikon kaca pembesar di pojok kanan tabel untuk mencari ID Client.*")
+        st.divider()
         
-        # Menampilkan seluruh data nasabah tanpa pagination (gulir saja)
-        # height=600 memberikan area scroll yang luas agar semua data bisa diakses
-        st.dataframe(
-            display_res, 
-            use_container_width=True, 
-            height=600 
-        )
+        # Preview Sheet Baru (Netting per Emiten)
+        st.subheader("Preview: Netting per Emiten (Buy - Sell)")
+        st.dataframe(net_emiten, use_container_width=True, height=400)
+
+    except Exception as e:
+        st.error(f"Terjadi kesalahan: {e}")
