@@ -72,7 +72,7 @@ if uploaded_file:
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_BS_per_Saham')
             client_final_net.to_excel(writer, index=False, sheet_name='Total_per_Client')
-            sheet3_final.to_excel(writer, index=False, sheet_name='Replika_Formula_Volume')
+            sheet3_final.to_excel(writer, index=False, sheet_name='Netting_Volume')
             net_emiten.to_excel(writer, index=False, sheet_name='Netting_per_Saham')
         
         st.download_button(
