@@ -66,9 +66,9 @@ if uploaded_file:
         
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_BS_per_Saham')
+            stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_B/S_per_Saham')
             client_final_net.to_excel(writer, index=False, sheet_name='Total_per_Client')
-            sheet3_final.to_excel(writer, index=False, sheet_name='Replika_Formula_Volume')
+            sheet3_final.to_excel(writer, index=False, sheet_name='Netting_Volume')
             net_emiten.to_excel(writer, index=False, sheet_name='Netting_per_Saham')
         
         st.download_button(
@@ -86,7 +86,7 @@ if uploaded_file:
         col1, col2 = st.columns(2)
 
         with col1:
-            st.subheader("Preview: Sheet 3 (Formula Dominan)")
+            st.subheader("Netting Standart")
             # Formatting preview
             s3_display = sheet3_final.copy()
             for col in ['tot_vol', 'Volume_Formula', 'amt_pay']:
@@ -94,7 +94,7 @@ if uploaded_file:
             st.dataframe(s3_display, use_container_width=True, height=500)
 
         with col2:
-            st.subheader("Preview: Sheet 4 (Netting murni)")
+            st.subheader("Netting Efek")
             # Formatting preview
             net_display = net_emiten.copy()
             for col in ['Net_Volume_Stock', 'Net_Amount_IDR']:
