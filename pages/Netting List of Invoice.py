@@ -98,7 +98,7 @@ if uploaded_file:
             st.dataframe(client_display, use_container_width=True, height=500)
 
         with col2:
-            st.subheader("Sheet 3 (Replika Formula)")
+            st.subheader("Recap All Data")
             st.dataframe(sheet3_display, use_container_width=True, height=500)
 
     except Exception as e:
