@@ -66,7 +66,7 @@ if uploaded_file:
         
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_B/S_per_Saham')
+            stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_BS_per_Saham')
             client_final_net.to_excel(writer, index=False, sheet_name='Total_per_Client')
             sheet3_final.to_excel(writer, index=False, sheet_name='Netting_Volume')
             net_emiten.to_excel(writer, index=False, sheet_name='Netting_per_Saham')
@@ -94,7 +94,7 @@ if uploaded_file:
             st.dataframe(s3_display, use_container_width=True, height=500)
 
         with col2:
-            st.subheader("Netting Efek")
+            st.subheader("Netting Saham")
             # Formatting preview
             net_display = net_emiten.copy()
             for col in ['Net_Volume_Stock', 'Net_Amount_IDR']:
