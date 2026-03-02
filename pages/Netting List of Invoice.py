@@ -83,11 +83,11 @@ if uploaded_file:
         col1, col2 = st.columns([1, 2]) # Membagi layar agar tidak terlalu panjang ke bawah
 
         with col1:
-            st.subheader("Preview: Total Net per Client")
+            st.subheader("Total Net per Client")
             st.dataframe(client_display, use_container_width=True, height=400)
 
         with col2:
-            st.subheader("Preview: Sheet 3 (Replika Formula)")
+            st.subheader("Recap All Data")
             st.dataframe(sheet3_display, use_container_width=True, height=400)
 
     except Exception as e:
