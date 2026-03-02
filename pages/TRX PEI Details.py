@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.title("📊 TRX PEI Details - With Loan Logic")
+st.title("📑 TRX PEI Details - With Loan Logic")
 
 uploaded_file = st.file_uploader("Upload Invoice CSV", type=['csv'], key="pei_loan")
 
