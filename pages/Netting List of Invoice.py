@@ -2,7 +2,7 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.title("📑 List of Invoice Netting - Formula Replica")
+st.title("📑 List of Invoice Netting")
 
 uploaded_file = st.file_uploader("Upload Invoice CSV", type=['csv'])
 
@@ -58,7 +58,7 @@ if uploaded_file:
         # Rapikan kolom Sheet 3 sesuai permintaan
         sheet3_final = sheet3[['no_cust', 'no_share', 'bors', 'tot_vol', 'Volume_Formula', 'amt_pay']]
 
-        st.success("✅ Data Berhasil Diproses! Sheet 3 dengan Replika Formula sudah siap.")
+        st.success("✅ Data Berhasil Diproses!")
 
         # 4. Generate Excel dengan 3 Sheet
         output = io.BytesIO()
