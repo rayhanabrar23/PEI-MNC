@@ -5,8 +5,8 @@ import io
 # 1. Konfigurasi Halaman
 st.set_page_config(page_title="TRX PEI Details", layout="wide")
 
-st.title("📑 TRX PEI Details Generator")
-st.info("Sistem ini akan membuat file Excel 17 kolom (Sheet Buy & Sell) secara otomatis.")
+st.title(" TRX PEI Details Generator")
+st.info("Sistem ini hanya akan memproses data nasabah yang terdaftar di SID Client (Bersih).")
 
 # --- 2. FUNGSI STANDARISASI KOLOM ---
 def find_and_rename(df):
@@ -69,10 +69,9 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
             final_sheets = {}
             for side in ['B', 'S']:
                 work_df = df_inv[df_inv['bors'] == side].copy()
-                work_df = work_df.merge(df_sid, on='cid_key', how='left')
                 
-                pei_data = work_df[work_df['sid_key'].notna()].copy()
-                not_pei = work_df[work_df['sid_key'].isna()].copy()
+                # Inner Join agar data Non-Client otomatis terhapus
+                pei_data = work_df.merge(df_sid, on='cid_key', how='inner')
 
                 if side == 'B':
                     pei_data = pei_data.merge(df_mbuy, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m'))
@@ -89,7 +88,6 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                 template['SID'] = pei_data['sid_key']
                 template['STOCK CODE'] = pei_data['stock_key']
                 
-                # Daftar Kolom Sesuai Request (Sesuai Urutan Template)
                 if side == 'B':
                     cols = ['MARGIN BUY QUANTITY', 'LOAN QUANTITY', 'AVAILABLE QUANTITY', 'CLOSING PRICE', 'AVAILABLE MARKET VALUE', 'HAIRCUT', 'AVAILABLE COLLATERAL VALUE']
                 else:
@@ -119,14 +117,11 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                     else: return "REPAY PEI" if abs(s) < abs(p) else "ALL STOCK REPAY"
                 
                 template['NETT'] = template.apply(get_nett_status, axis=1)
-                
-                not_pei_df = pd.DataFrame({'CID': ['Not Client PEI'] * len(not_pei)})
-                final_sheets[side] = pd.concat([template, not_pei_df], ignore_index=True).fillna("")
+                final_sheets[side] = template.fillna("")
 
             # --- 4. PREVIEW & DOWNLOAD ---
-            st.success("✅ Data Berhasil Diproses!")
+            st.success("✅ Data Berhasil Diproses (Data Non-Client Otomatis Dibuang)!")
             
-            # Tombol Download
             out = io.BytesIO()
             with pd.ExcelWriter(out, engine='openpyxl') as wr:
                 final_sheets['B'].to_excel(wr, index=False, sheet_name='Buy')
@@ -135,17 +130,9 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
             st.download_button("📥 Download Hasil_MNC.xlsx", out.getvalue(), "Hasil_MNC.xlsx")
 
             st.divider()
-            
-            # PREVIEW TABEL
-            tab1, tab2 = st.tabs(["📊 Preview Sheet BUY", "📊 Preview Sheet SELL"])
-            
-            with tab1:
-                st.subheader("Data Hasil Netting - BUY")
-                st.dataframe(final_sheets['B'], use_container_width=True)
-                
-            with tab2:
-                st.subheader("Data Hasil Netting - SELL")
-                st.dataframe(final_sheets['S'], use_container_width=True)
+            tab1, tab2 = st.tabs(["📊 Preview BUY", "📊 Preview SELL"])
+            with tab1: st.dataframe(final_sheets['B'], use_container_width=True)
+            with tab2: st.dataframe(final_sheets['S'], use_container_width=True)
 
     except Exception as e:
         st.error(f"Gagal memproses data: {e}")
