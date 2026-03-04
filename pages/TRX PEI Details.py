@@ -6,9 +6,27 @@ import io
 st.set_page_config(page_title="TRX PEI Details", layout="wide")
 
 st.title("🚀 TRX PEI Details Generator")
-st.info("Upload 5 file Excel (.xlsx) untuk menghasilkan laporan Hasil_MNC.")
+st.info("Aplikasi ini otomatis mendeteksi kolom kode saham (no_share, STOCK CODE, dll) di semua file Excel.")
 
-# --- 2. UPLOAD AREA ---
+# --- 2. FUNGSI STANDARISASI KOLOM ---
+def standardize_columns(df, type_context):
+    """Mencari dan menyeragamkan nama kolom kunci agar konsisten"""
+    # List kemungkinan nama kolom untuk Kode Saham
+    stock_names = ['no_share', 'STOCK CODE', 'Stock', 'Stockcode', 'no_shares', 'SYMBOL']
+    # List kemungkinan nama kolom untuk SID
+    sid_names = ['SID', 'SID_No', 'Client_SID']
+    # List kemungkinan nama kolom untuk CID/Client ID
+    cid_names = ['no_cust', 'CID', 'Client_ID', 'Account_No']
+
+    new_cols = {}
+    for col in df.columns:
+        if col in stock_names: new_cols[col] = 'stock_key'
+        if col in sid_names: new_cols[col] = 'sid_key'
+        if col in cid_names: new_cols[col] = 'cid_key'
+    
+    return df.rename(columns=new_cols)
+
+# --- 3. UPLOAD AREA ---
 col_u1, col_u2 = st.columns(2)
 with col_u1:
     file_invoice = st.file_uploader("1. Netting Invoice (xlsx)", type=['xlsx'])
@@ -20,29 +38,22 @@ with col_u2:
 
 if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
     try:
-        with st.spinner('Sedang memproses seluruh data PEI...'):
-            # --- 3. LOAD DATA & HANDLE NAMA KOLOM ---
-            # Pastikan ID dibaca sebagai string
-            df_inv = pd.read_excel(file_invoice, dtype={'no_cust': str, 'no_share': str, 'bors': str})
-            df_sid = pd.read_excel(file_sid_client, dtype={'SID': str, 'CID': str})
-            df_risk = pd.read_excel(file_risk, dtype={'Stockcode': str})
-            df_mbuy = pd.read_excel(file_m_buy, dtype={'SID': str, 'STOCK CODE': str})
-            df_msell = pd.read_excel(file_m_sell, dtype={'SID': str, 'STOCK CODE': str})
+        with st.spinner('Menyelaraskan kolom-kolom data...'):
+            # Load & Standardize
+            df_inv = standardize_columns(pd.read_excel(file_invoice, dtype=str), 'inv')
+            df_sid = standardize_columns(pd.read_excel(file_sid_client, dtype=str), 'sid_master')
+            df_risk = standardize_columns(pd.read_excel(file_risk, dtype=str), 'risk')
+            df_mbuy = standardize_columns(pd.read_excel(file_m_buy, dtype=str), 'mbuy')
+            df_msell = standardize_columns(pd.read_excel(file_m_sell, dtype=str), 'msell')
 
-            # Validasi kolom no_share di Invoice agar tidak error lagi
-            if 'no_share' not in df_inv.columns:
-                if 'Stock' in df_inv.columns:
-                    df_inv = df_inv.rename(columns={'Stock': 'no_share'})
-                else:
-                    st.error("❌ Kolom 'no_share' atau 'Stock' tidak ditemukan di file Invoice!")
-                    st.stop()
-
-            # Pembersihan Angka
+            # --- 4. DATA CLEANING & FORMULA ---
+            # Pastikan angka terbaca benar
             for c in ['amt_pay', 'tot_vol']:
-                df_inv[c] = pd.to_numeric(df_inv[c].astype(str).str.replace(',', '').str.replace('"', ''), errors='coerce').fillna(0)
+                if c in df_inv.columns:
+                    df_inv[c] = pd.to_numeric(df_inv[c].str.replace(',', '').str.replace('"', ''), errors='coerce').fillna(0)
             
             # Hitung Volume_Formula
-            df_inv['vol_net_total'] = df_inv.groupby(['no_cust', 'no_share'])['tot_vol'].transform(
+            df_inv['vol_net_total'] = df_inv.groupby(['cid_key', 'stock_key'])['tot_vol'].transform(
                 lambda x: (df_inv.loc[x.index, 'tot_vol'] * df_inv.loc[x.index, 'bors'].map({'B': 1, 'S': -1})).sum()
             )
 
@@ -53,50 +64,52 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                 return 0
             df_inv['Volume_Formula'] = df_inv.apply(get_vol_formula, axis=1)
 
-            # --- 4. PROCESSING SHEET BUY & SELL ---
+            # --- 5. PROCESSING SHEET BUY & SELL ---
             final_sheets = {}
             for side in ['B', 'S']:
                 work_df = df_inv[df_inv['bors'] == side].copy()
                 
-                # Join SID Client (CID ke no_cust)
-                work_df = work_df.merge(df_sid, left_on='no_cust', right_on='CID', how='left')
+                # Join SID Client (Mapping CID ke Name & SID)
+                work_df = work_df.merge(df_sid, on='cid_key', how='left')
                 
                 # Pisahkan PEI dan Non-PEI
-                pei_data = work_df[work_df['SID'].notna()].copy()
-                not_pei = work_df[work_df['SID'].isna()].copy()
+                pei_data = work_df[work_df['sid_key'].notna()].copy()
+                not_pei = work_df[work_df['sid_key'].isna()].copy()
 
-                # Join Data Tambahan
+                # Join Margin & Risk Data
                 if side == 'B':
-                    pei_data = pei_data.merge(df_mbuy, on=['SID', 'no_share'], how='left')
-                    pei_data = pei_data.merge(df_risk[['Stockcode', 'availablequantity']], left_on='no_share', right_on='Stockcode', how='left')
+                    pei_data = pei_data.merge(df_mbuy, on=['sid_key', 'stock_key'], how='left')
+                    # Ambil availablequantity dari risk parameter
+                    risk_subset = df_risk[['stock_key', 'availablequantity']].drop_duplicates('stock_key')
+                    pei_data = pei_data.merge(risk_subset, on='stock_key', how='left')
                     val_col = 'AVAILABLE MARKET VALUE'
                 else:
-                    df_msell_clean = df_msell.rename(columns={'STOCK CODE': 'no_share'})
-                    pei_data = pei_data.merge(df_msell_clean, on=['SID', 'no_share'], how='left')
+                    pei_data = pei_data.merge(df_msell, on=['sid_key', 'stock_key'], how='left')
                     pei_data['availablequantity'] = 0 
                     val_col = 'AVAILABLE SELL VALUE'
 
-                # --- 5. MAPPING 17 KOLOM ---
+                # --- 6. MAPPING KE TEMPLATE ---
                 template = pd.DataFrame()
-                template['SID'] = pei_data['SID']
-                template['STOCK CODE'] = pei_data['no_share']
+                template['SID'] = pei_data['sid_key']
+                template['STOCK CODE'] = pei_data['stock_key']
                 
-                if side == 'B':
-                    cols = ['MARGIN BUY QUANTITY', 'LOAN QUANTITY', 'AVAILABLE QUANTITY', 'CLOSING PRICE', 'AVAILABLE MARKET VALUE', 'HAIRCUT', 'AVAILABLE COLLATERAL VALUE']
-                else:
-                    cols = ['REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY', 'AVAILABLE SELL QUANTITY', 'CLOSING PRICE', 'AVAILABLE SELL VALUE']
+                # Daftar kolom dinamis
+                cols_target = ['MARGIN BUY QUANTITY', 'LOAN QUANTITY', 'AVAILABLE QUANTITY', 'CLOSING PRICE', 
+                               'AVAILABLE MARKET VALUE', 'HAIRCUT', 'AVAILABLE COLLATERAL VALUE',
+                               'REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY', 'AVAILABLE SELL QUANTITY', 'AVAILABLE SELL VALUE']
                 
-                for c in cols: template[c] = pei_data[c] if c in pei_data else 0
+                for c in cols_target:
+                    template[c] = pei_data[c] if c in pei_data else 0
 
                 template['B/S'] = side
-                template['CID'] = pei_data['no_cust']
+                template['CID'] = pei_data['cid_key']
                 template['Name'] = pei_data['Name']
-                template['Stock'] = pei_data['no_share']
+                template['Stock'] = pei_data['stock_key']
                 
-                # Volume & Validation
+                # Logika Volume & Error Side
                 def check_side(v):
-                    if side == 'B' and v < 0: return "ERROR: Wrong Side"
-                    if side == 'S' and v > 0: return "ERROR: Wrong Side"
+                    if side == 'B' and float(v) < 0: return "ERROR: Wrong Side"
+                    if side == 'S' and float(v) > 0: return "ERROR: Wrong Side"
                     return v
                 template['Volume'] = pei_data['Volume_Formula'].apply(check_side)
                 
@@ -105,18 +118,21 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
 
                 # Logika NETT
                 def get_nett(row):
-                    p, s = row['Volume'], row['PEI (Risk/Porto)']
+                    p = row['Volume']
+                    s = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce') or 0
                     if p == "ERROR: Wrong Side" or p == 0: return ""
-                    if p > 0: return "LOAN PEI" if s > p else "LOAN PARTIAL"
-                    else: return "REPAY PEI" if s < p else "ALL STOCK REPAY"
+                    p_num = float(p)
+                    if p_num > 0: return "LOAN PEI" if s > p_num else "LOAN PARTIAL"
+                    else: return "REPAY PEI" if s < p_num else "ALL STOCK REPAY"
+                
                 template['NETT'] = template.apply(get_nett, axis=1)
 
-                # Append Non-PEI
+                # Tambahkan baris Not Client PEI
                 not_pei_rows = pd.DataFrame({'CID': ['Not Client PEI'] * len(not_pei)})
                 final_sheets[side] = pd.concat([template, not_pei_rows], ignore_index=True).fillna("")
 
-            # --- 6. OUTPUT ---
-            st.success("✅ File Hasil_MNC Berhasil Dibuat!")
+            # --- 7. EXPORT ---
+            st.success("✅ Berhasil memproses! Silakan download hasilnya.")
             output = io.BytesIO()
             with pd.ExcelWriter(output, engine='openpyxl') as writer:
                 final_sheets['B'].to_excel(writer, index=False, sheet_name='Buy')
@@ -124,10 +140,6 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
             
             st.download_button("📥 Download Hasil_MNC.xlsx", output.getvalue(), "Hasil_MNC.xlsx")
 
-            st.divider()
-            t1, t2 = st.tabs(["Preview Buy", "Preview Sell"])
-            with t1: st.dataframe(final_sheets['B'], use_container_width=True)
-            with t2: st.dataframe(final_sheets['S'], use_container_width=True)
-
     except Exception as e:
-        st.error(f"Gagal memproses file Excel: {e}")
+        st.error(f"Terjadi kesalahan: {e}")
+        st.info("Pastikan semua file memiliki header di baris pertama.")
