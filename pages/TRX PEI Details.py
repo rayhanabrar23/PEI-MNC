@@ -5,7 +5,7 @@ import io
 # 1. Konfigurasi Halaman
 st.set_page_config(page_title="TRX PEI Details", layout="wide")
 
-st.title("🚀 TRX PEI Details Generator")
+st.title("📑 TRX PEI Details Generator")
 st.info("Sistem ini akan membuat file Excel 17 kolom (Sheet Buy & Sell) secara otomatis.")
 
 # --- 2. FUNGSI STANDARISASI KOLOM ---
