@@ -2,83 +2,129 @@ import streamlit as st
 import pandas as pd
 import io
 
-st.title("📑 TRX PEI Details - With Loan Logic")
+st.set_page_config(page_title="TRX PEI Details", layout="wide")
 
-uploaded_file = st.file_uploader("Upload Invoice CSV", type=['csv'], key="pei_loan")
+st.title("🚀 TRX PEI Details Generator")
+st.info("Upload 5 file raw data untuk menghasilkan template Hasil_MNC (Sheet Buy & Sell).")
 
-if uploaded_file:
+# --- 1. UPLOAD AREA ---
+col_u1, col_u2 = st.columns(2)
+with col_u1:
+    file_invoice = st.file_uploader("1. Netting Invoice (CSV)", type=['csv'])
+    file_sid = st.file_uploader("2. SID Client (CSV/Excel)", type=['csv', 'xlsx'])
+    file_risk = st.file_uploader("3. Risk Parameter (CSV/Excel)", type=['csv', 'xlsx'])
+with col_u2:
+    file_m_buy = st.file_uploader("4. Margin Buy (CSV/Excel)", type=['csv', 'xlsx'])
+    file_m_sell = st.file_uploader("5. Margin Sell (CSV/Excel)", type=['csv', 'xlsx'])
+
+def load_file(file_obj, dtype_dict=None):
+    if file_obj is None: return None
+    if file_obj.name.endswith('.csv'):
+        return pd.read_csv(file_obj, dtype=dtype_dict)
+    else:
+        return pd.read_excel(file_obj, dtype=dtype_dict)
+
+if all([file_invoice, file_sid, file_risk, file_m_buy, file_m_sell]):
     try:
-        # 1. Load Data
-        df = pd.read_csv(uploaded_file, dtype={'no_cust': str, 'no_share': str, 'bors': str})
-        
-        # 2. Cleaning
-        for col in ['amt_pay', 'tot_vol']:
-            if col in df.columns:
-                df[col] = df[col].astype(str).str.replace(',', '').str.replace('"', '')
-                df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+        # --- 2. LOAD & CLEANING DATA ---
+        df_inv = load_file(file_invoice, {'no_cust': str, 'no_share': str})
+        df_sid = load_file(file_sid, {'SID': str, 'CID': str})
+        df_risk = load_file(file_risk, {'Stockcode': str})
+        df_mbuy = load_file(file_m_buy, {'SID': str, 'STOCK CODE': str})
+        df_msell = load_file(file_m_sell, {'SID': str, 'STOCK CODE': str})
 
-        # 3. Hitung Volume_Formula (Netting Logic)
-        df['vol_net'] = df.apply(lambda x: x['tot_vol'] if x['bors'] == 'B' else -x['tot_vol'], axis=1)
-        net_vol_calc = df.groupby(['no_cust', 'no_share']).agg({'vol_net': 'sum'}).reset_index()
+        # Bersihkan angka di Invoice (amt_pay & tot_vol diambil dari logika sebelumnya)
+        for c in ['amt_pay', 'tot_vol']:
+            df_inv[c] = pd.to_numeric(df_inv[c].astype(str).str.replace(',', '').str.replace('"', ''), errors='coerce').fillna(0)
         
-        detail_bs = df.groupby(['no_cust', 'no_share', 'bors']).agg({
-            'tot_vol': 'sum',
-            'amt_pay': 'sum'
-        }).reset_index()
-        
-        merged_data = detail_bs.merge(net_vol_calc, on=['no_cust', 'no_share'], how='left')
-        
-        def apply_volume_formula(row):
-            total_net = row['vol_net']
-            status = row['bors']
-            if total_net < 0: return total_net if status == 'S' else 0
-            elif total_net > 0: return total_net if status == 'B' else 0
-            else: return 0
+        # Hitung Volume_Formula (Logika dominan B/S)
+        df_inv['vol_net'] = df_inv.apply(lambda x: x['tot_vol'] if x['bors'] == 'B' else -x['tot_vol'], axis=1)
+        net_calc = df_inv.groupby(['no_cust', 'no_share'])['vol_net'].sum().reset_index()
+        df_inv = df_inv.merge(net_calc, on=['no_cust', 'no_share'], suffixes=('', '_total'))
 
-        merged_data['Volume_Formula'] = merged_data.apply(apply_volume_formula, axis=1)
+        def get_vol_formula(row):
+            total = row['vol_net_total']
+            if total < 0: return total if row['bors'] == 'S' else 0
+            elif total > 0: return total if row['bors'] == 'B' else 0
+            return 0
+        df_inv['Volume_Formula'] = df_inv.apply(get_vol_formula, axis=1)
 
-        # 4. REPLIKA FORMULA EXCEL BARU (Loan/Repay Logic)
-        # Catatan: Karena kita tidak punya table VLOOKUP eksternal, 
-        # saya asumsikan semua share diproses. Jika kamu punya list khusus Margin, 
-        # kita bisa tambahkan filternya nanti.
-        
-        def apply_loan_logic(row):
-            p4 = row['Volume_Formula'] # Volume Net
-            s4 = row['amt_pay']        # Value Amount Pay
+        # --- 3. PROCESSING SHEET BUY & SELL ---
+        results = {}
+        for side in ['B', 'S']:
+            # Filter side
+            work_df = df_inv[df_inv['bors'] == side].copy()
             
-            if p4 == 0:
-                return ""
+            # Join SID Client (Mendapatkan Name & SID)
+            work_df = work_df.merge(df_sid, left_on='no_cust', right_on='CID', how='left')
             
-            # Logika jika Net Buy (P4 > 0)
-            if p4 > 0:
-                if s4 < 0: return "" # Safety check
-                return "LOAN PEI" if s4 > p4 else "LOAN PARTIAL"
-            
-            # Logika jika Net Sell (P4 < 0)
+            # Pisahkan yang PEI dan Not PEI
+            pei_data = work_df[work_df['SID'].notna()].copy()
+            not_pei = work_df[work_df['SID'].isna()].copy()
+            not_pei['CID'] = "Not Client PEI"
+
+            # Join Margin Data & Risk Parameter
+            if side == 'B':
+                pei_data = pei_data.merge(df_mbuy, on=['SID', 'no_share'], how='left')
+                pei_data['PEI (Risk/Porto)'] = pei_data.merge(df_risk, left_on='no_share', right_on='Stockcode', how='left')['availablequantity']
+                val_col = 'AVAILABLE MARKET VALUE'
             else:
-                if s4 == 0: return ""
-                return "REPAY PEI" if s4 < p4 else "ALL STOCK REPAY"
+                # Untuk Sell, join dengan Margin Sell
+                pei_data = pei_data.merge(df_msell, left_on=['SID', 'no_share'], right_on=['SID', 'STOCK CODE'], how='left')
+                pei_data['PEI (Risk/Porto)'] = 0 # Sesuai instruksi fokus buy
+                val_col = 'AVAILABLE SELL VALUE'
 
-        merged_data['Loan_Status'] = merged_data.apply(apply_loan_logic, axis=1)
+            # --- 4. MAPPING KE TEMPLATE 17 KOLOM ---
+            final_cols = pd.DataFrame()
+            final_cols['SID'] = pei_data['SID']
+            final_cols['STOCK CODE'] = pei_data['no_share']
+            
+            # Kolom Spesifik Buy/Sell
+            if side == 'B':
+                for c in ['MARGIN BUY QUANTITY', 'LOAN QUANTITY', 'AVAILABLE QUANTITY', 'CLOSING PRICE', 'AVAILABLE MARKET VALUE', 'HAIRCUT', 'AVAILABLE COLLATERAL VALUE']:
+                    final_cols[c] = pei_data[c] if c in pei_data else 0
+            else:
+                for c in ['REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY', 'AVAILABLE SELL QUANTITY', 'CLOSING PRICE', 'AVAILABLE SELL VALUE']:
+                    final_cols[c] = pei_data[c] if c in pei_data else 0
 
-        # 5. Output Final
-        trx_pei_details = merged_data[['no_cust', 'no_share', 'Volume_Formula', 'amt_pay', 'Loan_Status']].copy()
-        trx_pei_details.columns = ['Client Number', 'Kode Efek', 'Volume', 'Value', 'Status Loan/Repay']
+            final_cols['B/S'] = side
+            final_cols['CID'] = pei_data['no_cust']
+            final_cols['Name'] = pei_data['Name']
+            final_cols['Stock'] = pei_data['no_share']
+            
+            # Logika Error Volume
+            def validate_vol(v):
+                if side == 'B' and v < 0: return "ERROR: Wrong Side"
+                if side == 'S' and v > 0: return "ERROR: Wrong Side"
+                return v
+            final_cols['Volume'] = pei_data['Volume_Formula'].apply(validate_vol)
+            
+            final_cols['Value'] = pei_data[val_col] if val_col in pei_data else 0
+            final_cols['PEI (Risk/Porto)'] = pei_data['PEI (Risk/Porto)']
 
-        st.success("✅ TRX PEI Details dengan Logika Loan Berhasil Dibuat!")
-        st.dataframe(trx_pei_details.head(20))
+            # Logika NETT (Formula Complex)
+            def apply_nett_logic(row):
+                # Merujuk pada logika P (Volume) dan S (PEI Risk)
+                p = row['Volume']
+                s = row['PEI (Risk/Porto)']
+                if p == "ERROR: Wrong Side" or p == 0: return ""
+                if p > 0: return "LOAN PEI" if s > p else "LOAN PARTIAL"
+                else: return "REPAY PEI" if s < p else "ALL STOCK REPAY"
+            
+            final_cols['NETT'] = final_cols.apply(apply_nett_logic, axis=1)
 
-        # 6. Download
+            # Gabungkan dengan Not PEI di paling bawah
+            final_df = pd.concat([final_cols, not_pei[['no_cust']].rename(columns={'no_cust': 'CID'})], ignore_index=True)
+            results[side] = final_df
+
+        # --- 5. DOWNLOAD ---
+        st.success("✅ File Hasil_MNC Berhasil Dibuat!")
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            trx_pei_details.to_excel(writer, index=False, sheet_name='TRX_PEI_Details')
+            results['B'].to_excel(writer, index=False, sheet_name='Buy')
+            results['S'].to_excel(writer, index=False, sheet_name='Sell')
         
-        st.download_button(
-            label="📥 Download TRX PEI Loan Details.xlsx",
-            data=output.getvalue(),
-            file_name="TRX_PEI_Loan_Details.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+        st.download_button("📥 Download Hasil_MNC.xlsx", output.getvalue(), "Hasil_MNC.xlsx")
 
     except Exception as e:
-        st.error(f"Error: {e}")
+        st.error(f"Terjadi kesalahan pemrosesan: {e}")
