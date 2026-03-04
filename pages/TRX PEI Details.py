@@ -5,7 +5,7 @@ import io
 # 1. Konfigurasi Halaman
 st.set_page_config(page_title="TRX PEI Details", layout="wide")
 
-st.title(" TRX PEI Details Generator")
+st.title("📑 TRX PEI Details Generator")
 st.info("Sistem ini hanya akan memproses data nasabah yang terdaftar di SID Client (Bersih).")
 
 # --- 2. FUNGSI STANDARISASI KOLOM ---
