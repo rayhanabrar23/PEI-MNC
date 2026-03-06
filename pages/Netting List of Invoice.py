@@ -86,7 +86,7 @@ if uploaded_file:
         col1, col2 = st.columns(2)
 
         with col1:
-            st.subheader("Netting Standar")
+            st.subheader("Total Buy & Sell")
             # Formatting preview
             s3_display = sheet3_final.copy()
             for col in ['tot_vol', 'Volume_Formula', 'amt_pay']:
@@ -94,7 +94,7 @@ if uploaded_file:
             st.dataframe(s3_display, use_container_width=True, height=500)
 
         with col2:
-            st.subheader("Netting Saham")
+            st.subheader("Netting Stock & Cash")
             # Formatting preview
             net_display = net_emiten.copy()
             for col in ['Net_Volume_Stock', 'Net_Amount_IDR']:
