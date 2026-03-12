@@ -34,9 +34,9 @@ def process_soa(uploaded_file):
         return None, None
 
 # --- UI Streamlit ---
-st.set_page_config(page_title="MNCN - SOA Generator", layout="wide") # Layout lebar agar enak dilihat
+st.set_page_config(page_title="MNCN - SOA Data", layout="wide") # Layout lebar agar enak dilihat
 
-st.title("📊 MNCN - SOA Generator")
+st.title("📊 MNCN - Calculate Ending Balance")
 st.info("Aplikasi ini akan merapikan data SOA dan menghitung Ending Balance per Client.")
 
 uploaded_file = st.file_uploader("Upload file SOA kamu di sini", type=['csv'])
@@ -47,7 +47,7 @@ if uploaded_file:
     if raw_res is not None:
         st.success("✅ Data berhasil diproses!")
         
-        # --- Bagian Download (Pindah ke Atas) ---
+        # --- Bagian Download ---
         output = io.BytesIO()
         with pd.ExcelWriter(output, engine='openpyxl') as writer:
             raw_res.to_excel(writer, index=False, sheet_name='Ending_Balance')
@@ -65,7 +65,7 @@ if uploaded_file:
         st.subheader("Preview Hasil Ending Balance")
         st.write("💡 *Gunakan ikon kaca pembesar di pojok kanan tabel untuk mencari ID Client.*")
         
-        # Menampilkan seluruh data nasabah tanpa pagination (gulir saja)
+        # Menampilkan seluruh data nasabah tanpa pagination
         # height=600 memberikan area scroll yang luas agar semua data bisa diakses
         st.dataframe(
             display_res, 
