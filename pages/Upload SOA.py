@@ -34,7 +34,7 @@ def process_soa(uploaded_file):
         return None, None
 
 # --- UI Streamlit ---
-st.set_page_config(page_title="MNCN - SOA Data", layout="wide") # Layout lebar agar enak dilihat
+st.set_page_config(page_title="SOA Data", layout="wide") # Layout lebar agar enak dilihat
 
 st.title("📊 UPLOAD SOA")
 st.info("Page ini akan merapikan data SOA dan menghitung Ending Balance per Client.")
