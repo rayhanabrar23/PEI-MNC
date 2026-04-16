@@ -36,8 +36,8 @@ def process_soa(uploaded_file):
 # --- UI Streamlit ---
 st.set_page_config(page_title="MNCN - SOA Data", layout="wide") # Layout lebar agar enak dilihat
 
-st.title("📊 MNCN - Calculate Ending Balance")
-st.info("Aplikasi ini akan merapikan data SOA dan menghitung Ending Balance per Client.")
+st.title("📊 UPLOAD SOA")
+st.info("Page ini akan merapikan data SOA dan menghitung Ending Balance per Client.")
 
 uploaded_file = st.file_uploader("Upload file SOA kamu di sini", type=['csv'])
 
