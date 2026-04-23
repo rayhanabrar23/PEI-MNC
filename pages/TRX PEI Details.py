@@ -108,15 +108,15 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                 
                 template['Volume'] = pei_data['Volume_Formula'].apply(check_vol)
                 def calculate_real_value(row):
-    # Jika volume 0 atau error, value harus 0
-    vol = row['Volume_Formula']
-    val = row[val_src] if val_src in row and pd.notnull(row[val_src]) else 0
+                # Jika volume 0 atau error, value harus 0
+                vol = row['Volume_Formula']
+                val = row[val_src] if val_src in row and pd.notnull(row[val_src]) else 0
     
-    if vol == 0:
-        return 0
-    return val
+                    if vol == 0:
+                    return 0
+                return val
 
-template['Value'] = pei_data.apply(calculate_real_value, axis=1)
+                template['Value'] = pei_data.apply(calculate_real_value, axis=1)
                 template['PEI (Risk/Porto)'] = pei_data['avail_risk']
 
                 def get_nett_status(row):
