@@ -59,18 +59,18 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
             df_inv['vol_net_total'] = df_inv.groupby(['cid_key', 'stock_key'])['tot_vol'].transform(
                 lambda x: (df_inv.loc[x.index, 'tot_vol'] * df_inv.loc[x.index, 'bors'].map({'B': 1, 'S': -1})).sum()
             )
+            
             def calc_vol_formula(row):
                 total = row['vol_net_total']
                 if total < 0: return total if row['bors'] == 'S' else 0
                 elif total > 0: return total if row['bors'] == 'B' else 0
                 return 0
+            
             df_inv['Volume_Formula'] = df_inv.apply(calc_vol_formula, axis=1)
 
             final_sheets = {}
             for side in ['B', 'S']:
                 work_df = df_inv[df_inv['bors'] == side].copy()
-                
-                # Inner Join agar data Non-Client otomatis terhapus
                 pei_data = work_df.merge(df_sid, on='cid_key', how='inner')
 
                 if side == 'B':
@@ -83,7 +83,6 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                     pei_data['avail_risk'] = 0
                     val_src = 'AVAILABLE SELL VALUE'
 
-                # --- BUILD TEMPLATE 17 KOLOM ---
                 template = pd.DataFrame()
                 template['SID'] = pei_data['sid_key']
                 template['STOCK CODE'] = pei_data['stock_key']
@@ -107,15 +106,17 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                     return v
                 
                 template['Volume'] = pei_data['Volume_Formula'].apply(check_vol)
+                
+                # --- PERBAIKAN FUNGSI VALUE ---
                 def calculate_real_value(row):
-                # Jika volume 0 atau error, value harus 0
-                vol = row['Volume_Formula']
-                val = row[val_src] if val_src in row and pd.notnull(row[val_src]) else 0
-    
+                    vol = row['Volume_Formula']
+                    # Ambil nilai dari kolom sumber, jika tidak ada isi 0
+                    val = row[val_src] if val_src in row and pd.notnull(row[val_src]) else 0
                     if vol == 0:
-                    return 0
-                return val
+                        return 0
+                    return val
 
+                # Apply fungsi ke pei_data sebelum dipindah ke template
                 template['Value'] = pei_data.apply(calculate_real_value, axis=1)
                 template['PEI (Risk/Porto)'] = pei_data['avail_risk']
 
@@ -128,8 +129,7 @@ if all([file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell]):
                 template['NETT'] = template.apply(get_nett_status, axis=1)
                 final_sheets[side] = template.fillna("")
 
-            # --- 4. PREVIEW & DOWNLOAD ---
-            st.success("✅ Data Berhasil Diproses (Data Non-Client Otomatis Dibuang)!")
+            st.success("✅ Data Berhasil Diproses!")
             
             out = io.BytesIO()
             with pd.ExcelWriter(out, engine='openpyxl') as wr:
