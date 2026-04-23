@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import io
+from datetime import datetime
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
@@ -152,7 +153,6 @@ def parse_op_file(content: str):
             continue
         parts = line.split("|")
         if parts[0] == "0":
-            # Header row: 0|date|broker|SID|name|loan_existing|accrued_interest|...
             if len(parts) < 7:
                 continue
             sid = parts[3]
@@ -170,7 +170,6 @@ def parse_op_file(content: str):
                     "name": parts[4] if len(parts) > 4 else sid,
                 }
         elif parts[0] == "1":
-            # Emiten row: 1|broker|SID|emiten|volume
             if len(parts) < 5:
                 continue
             sid = parts[2]
@@ -192,7 +191,6 @@ def parse_credit_limit_file(content: str):
         if not line:
             continue
         parts = line.split("|")
-        # Skip header
         if i == 0 and parts[0].strip().lower() == "value date":
             continue
         if len(parts) < 7:
@@ -221,16 +219,16 @@ def col(df, idx):
     return df.iloc[:, idx]
 
 # Sell sheet columns (0-based index)
-# A=0 SID, E=4 Available Sell Qty, F=5 Closing Price, L=11 Volume, M=12 Value
 SELL_SID   = 0
+SELL_STOCK = 1   # Stock Code / Kode Emiten (kolom B)
 SELL_AVQ   = 4   # Available Sell Quantity
 SELL_CP    = 5   # Closing Price
 SELL_VOL   = 11  # Volume
 SELL_VAL   = 12  # Value
 
 # Buy sheet columns (0-based index)
-# A=0 SID, E=4 Available Qty, F=5 Closing Price, H=7 Haircut, N=13 Volume, O=14 Value
 BUY_SID    = 0
+BUY_STOCK  = 1   # Stock Code / Kode Emiten (kolom B)
 BUY_AVQ    = 4   # Available Quantity
 BUY_CP     = 5   # Closing Price
 BUY_HC     = 7   # Haircut
@@ -244,14 +242,13 @@ BUY_VAL    = 14  # Value
 RATIO_THRESHOLD = 0.65
 
 def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
-    results = {}  # keyed by SID
+    results = {}
 
     all_sids = sorted(set(
         col(df_sell, SELL_SID).dropna().astype(str).unique().tolist() +
         col(df_buy,  BUY_SID ).dropna().astype(str).unique().tolist()
     ))
 
-    # ── Pre-aggregate per SID ──────────────────────────────────────────
     def agg_sell(sid):
         rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
         return {
@@ -268,7 +265,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "rows": rows,
         }
 
-    # Global totals (for credit limit partisipan)
     global_total_sell_value = pd.to_numeric(col(df_sell, SELL_VAL), errors="coerce").sum()
     global_total_buy_value  = pd.to_numeric(col(df_buy,  BUY_VAL),  errors="coerce").sum()
 
@@ -299,14 +295,11 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             })
 
         # ── 1. Validasi Repayment Proceed ─────────────────────────────
-        # 1a: Per baris Volume Sell ≤ Available Sell Qty
         rep_1a_pass = True
         rep_1a_detail = []
         for _, row in sell["rows"].iterrows():
             vol = pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0
             avq = pd.to_numeric(row.iloc[SELL_AVQ], errors="coerce") or 0
-            emiten = str(row.iloc[SELL_SID]) if SELL_SID < len(row) else ""
-            # try get emiten name if any column nearby
             if vol > avq:
                 rep_1a_pass = False
                 rep_1a_detail.append(f"Volume {vol:,.0f} > Avail Sell Qty {avq:,.0f}")
@@ -317,7 +310,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "; ".join(rep_1a_detail) if rep_1a_detail else f"Total Volume Sell: {total_sell_vol:,.0f}"
         )
 
-        # 1b: Total Value Sell ≤ Total Value Buy (Loan Value)
         rep_1b_pass = total_sell_val <= total_buy_val
         add(
             "1b. Total Repayment Value ≤ Total Loan Value",
@@ -325,29 +317,14 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             f"Total Sell Value: {fmt_rp(total_sell_val)} | Total Buy Value (Loan): {fmt_rp(total_buy_val)}"
         )
 
-        # 1c: Rasio < 65%
-        # Rasio = (Loan Existing - Total Sell Val + Accrued Interest) / 
-        #         (Volume Existing - Total Sell Vol) * Closing Price * (1 - Haircut)
-        # Closing Price & Haircut: from buy rows (per emiten, aggregate weighted)
-        # We'll use per-emiten denominator summed
         collateral_denom = 0.0
         for _, row in buy["rows"].iterrows():
             cp  = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
             hc  = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%",""), errors="coerce") or 0
-            # haircut might be decimal or percent
             if hc > 1:
                 hc = hc / 100
-            vol_buy = pd.to_numeric(row.iloc[BUY_VOL], errors="coerce") or 0
-            # collateral uses volume_existing per emiten... but we only have total volume_existing per SID
-            # so we'll use total volume_existing - total_sell_vol * cp * (1-hc) as aggregate
-            # use per-buy-row contribution
-            collateral_denom += cp * (1 - hc)  # weight per lot; multiply by net volume below
+            collateral_denom += cp * (1 - hc)
 
-        # Simpler: sum(cp*(1-hc)) per emiten * (volume_existing - total_sell_vol) / num_buy_rows
-        # Since volume_existing is total per SID, we approximate collateral as:
-        # Σ per-emiten: (volume_existing_emiten - sell_vol_emiten) * cp * (1-hc)
-        # But we only have total volume_existing. We'll use the total approach:
-        # collateral = (volume_existing - total_sell_vol) * avg(cp*(1-hc))
         n_buy = len(buy["rows"]) if len(buy["rows"]) > 0 else 1
         avg_cp_hc = collateral_denom / n_buy if n_buy else 0
         net_vol = volume_existing - total_sell_vol
@@ -367,7 +344,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         )
 
         # ── 2. Validasi Loan Request ──────────────────────────────────
-        # 2a: Per baris Volume Buy ≤ Available Qty
         loan_2a_pass = True
         loan_2a_detail = []
         for _, row in buy["rows"].iterrows():
@@ -383,9 +359,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "; ".join(loan_2a_detail) if loan_2a_detail else f"Total Volume Buy: {total_buy_vol:,.0f}"
         )
 
-        # 2b: Rasio Loan Request < 65%
-        # collateral = (volume_existing - total_sell_vol + total_buy_vol) * avg(cp*(1-hc))
-        # cp from buy sheet
         collateral_buy_denom = 0.0
         for _, row in buy["rows"].iterrows():
             cp  = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
@@ -412,7 +385,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         )
 
         # ── 3. Validasi Credit Limit Nasabah ─────────────────────────
-        # available_limit + total_sell_val > total_buy_val
         cl_nasabah_pass = (available_limit + total_sell_val) > total_buy_val
         add(
             "3. Credit Limit Nasabah",
@@ -437,6 +409,91 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
     }
 
     return results, global_result
+
+# ─────────────────────────────────────────────
+# EXCEL EXPORT GENERATORS
+# ─────────────────────────────────────────────
+
+def generate_repayment_excel(df_sell, sid_results):
+    """Buat file Repayment Proceed — hanya SID yang LOLOS semua validasi."""
+    today_str = datetime.today().strftime("%Y%m%d")
+    passed_sids = [
+        sid for sid, data in sid_results.items()
+        if all(c["passed"] for c in data["checks"])
+    ]
+
+    # Sheet 1 — ringkasan per SID
+    sheet1_rows = []
+    for sid in passed_sids:
+        rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
+        total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").sum()
+        if total_val > 0:
+            sheet1_rows.append({
+                "Participant Code": "EP",
+                "SID Client":       sid,
+                "Repayment Value":  total_val,
+            })
+
+    # Sheet 2 — detail per emiten / per baris
+    sheet2_rows = []
+    for sid in passed_sids:
+        rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
+        for _, row in rows.iterrows():
+            qty = pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0
+            if qty > 0:
+                sheet2_rows.append({
+                    "SID Client": sid,
+                    "Stock Code": str(row.iloc[SELL_STOCK]),
+                    "Quantity":   qty,
+                })
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(sheet1_rows).to_excel(writer, sheet_name="Repayment Proceed", index=False)
+        pd.DataFrame(sheet2_rows).to_excel(writer, sheet_name="Detail Collateral",  index=False)
+    buf.seek(0)
+    return buf, f"Repayment Proceed {today_str}.xlsx"
+
+
+def generate_loan_excel(df_buy, sid_results):
+    """Buat file Loan Request — hanya SID yang LOLOS semua validasi."""
+    today_str = datetime.today().strftime("%Y%m%d")
+    passed_sids = [
+        sid for sid, data in sid_results.items()
+        if all(c["passed"] for c in data["checks"])
+    ]
+
+    # Sheet 1 — ringkasan per SID
+    sheet1_rows = []
+    for sid in passed_sids:
+        rows = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
+        total_val = pd.to_numeric(col(rows, BUY_VAL), errors="coerce").sum()
+        if total_val > 0:
+            sheet1_rows.append({
+                "Participant Code": "EP",
+                "SID Client":       sid,
+                "Loan Value":       total_val,
+            })
+
+    # Sheet 2 — detail per emiten / per baris
+    sheet2_rows = []
+    for sid in passed_sids:
+        rows = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
+        for _, row in rows.iterrows():
+            qty = pd.to_numeric(row.iloc[BUY_VOL], errors="coerce") or 0
+            if qty > 0:
+                sheet2_rows.append({
+                    "SID Client": sid,
+                    "Stock Code": str(row.iloc[BUY_STOCK]),
+                    "Quantity":   qty,
+                })
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(sheet1_rows).to_excel(writer, sheet_name="Loan Request",      index=False)
+        pd.DataFrame(sheet2_rows).to_excel(writer, sheet_name="Detail Collateral", index=False)
+    buf.seek(0)
+    return buf, f"Loan Request {today_str}.xlsx"
 
 # ─────────────────────────────────────────────
 # UI
@@ -571,20 +628,10 @@ if run_btn:
     # ── Per-SID results ───────────────────────────────────────────────
     section("VALIDASI PER NASABAH")
 
-    VALIDATION_LABELS = [
-        "1a. Volume Sell ≤ Available Sell Quantity",
-        "1b. Total Repayment Value ≤ Total Loan Value",
-        "1c. Rasio Repayment < 65%",
-        "2a. Volume Buy ≤ Available Quantity",
-        "2b. Rasio Loan Request < 65%",
-        "3. Credit Limit Nasabah",
-    ]
-
     for sid, data in sid_results.items():
         checks = data["checks"]
         all_pass = all(c["passed"] for c in checks)
         status_icon = "✅" if all_pass else "❌"
-        status_color = "#3fb950" if all_pass else "#f85149"
 
         with st.expander(f"{status_icon} {sid} — {data['name']}", expanded=not all_pass):
             for check in checks:
@@ -618,3 +665,35 @@ if run_btn:
         file_name="hasil_validasi.xlsx",
         mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
     )
+
+    st.divider()
+
+    # ── Export ke Dashboard Kantor ────────────────────────────────────
+    section("📤 Export ke Dashboard Kantor")
+    st.markdown(
+        '<p style="color:#8b949e;font-family:\'IBM Plex Mono\',monospace;font-size:0.8rem;">'
+        'Hanya nasabah yang LOLOS semua validasi yang akan disertakan dalam file berikut.</p>',
+        unsafe_allow_html=True,
+    )
+
+    dl_col1, dl_col2 = st.columns(2)
+
+    with dl_col1:
+        rep_buf, rep_fname = generate_repayment_excel(df_sell, sid_results)
+        st.download_button(
+            label="⬇️ Repayment Proceed (.xlsx)",
+            data=rep_buf,
+            file_name=rep_fname,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
+
+    with dl_col2:
+        loan_buf, loan_fname = generate_loan_excel(df_buy, sid_results)
+        st.download_button(
+            label="⬇️ Loan Request (.xlsx)",
+            data=loan_buf,
+            file_name=loan_fname,
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+            use_container_width=True,
+        )
