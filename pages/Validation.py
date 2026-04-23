@@ -251,11 +251,10 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 
     def agg_sell(sid):
         rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
-        return {
-            "total_volume": pd.to_numeric(col(rows, SELL_VOL), errors="coerce").sum(),
-            "total_value":  pd.to_numeric(col(rows, SELL_VAL), errors="coerce").sum(),
-            "rows": rows,
-        }
+        # Volume di sell sheet bisa negatif, gunakan abs untuk total volume
+        total_vol = pd.to_numeric(col(rows, SELL_VOL), errors="coerce").abs().sum()
+        total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").sum()
+        return {"total_volume": total_vol, "total_value": total_val, "rows": rows}
 
     def agg_buy(sid):
         rows = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
@@ -285,6 +284,10 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         total_buy_vol  = buy["total_volume"]
         total_buy_val  = buy["total_value"]
 
+        # Flag transaksi aktif
+        has_repayment    = total_sell_vol > 0
+        has_loan_request = total_buy_val > 0
+
         sid_results = {"name": name, "checks": []}
 
         def add(label, passed, detail=""):
@@ -295,10 +298,12 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             })
 
         # ── 1. Validasi Repayment Proceed ─────────────────────────────
+
+        # 1a: Per baris Volume Sell ≤ Available Sell Qty
         rep_1a_pass = True
         rep_1a_detail = []
         for _, row in sell["rows"].iterrows():
-            vol = pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0
+            vol = abs(pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0)
             avq = pd.to_numeric(row.iloc[SELL_AVQ], errors="coerce") or 0
             if vol > avq:
                 rep_1a_pass = False
@@ -310,17 +315,25 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "; ".join(rep_1a_detail) if rep_1a_detail else f"Total Volume Sell: {total_sell_vol:,.0f}"
         )
 
-        rep_1b_pass = total_sell_val <= total_buy_val
-        add(
-            "1b. Total Repayment Value ≤ Total Loan Value",
-            rep_1b_pass,
-            f"Total Sell Value: {fmt_rp(total_sell_val)} | Total Buy Value (Loan): {fmt_rp(total_buy_val)}"
-        )
+        # 1b: Total Value Sell ≤ Total Value Buy (Loan Value)
+        # ✅ FIX: Jika tidak ada Loan Request (pure repayment), check 1b dilewati / otomatis lolos
+        if not has_loan_request:
+            rep_1b_pass   = True
+            rep_1b_detail = "Pure repayment tanpa Loan Request — check 1b dilewati"
+        else:
+            rep_1b_pass   = total_sell_val <= total_buy_val
+            rep_1b_detail = (
+                f"Total Sell Value: {fmt_rp(total_sell_val)} | "
+                f"Total Buy Value (Loan): {fmt_rp(total_buy_val)}"
+            )
 
+        add("1b. Total Repayment Value ≤ Total Loan Value", rep_1b_pass, rep_1b_detail)
+
+        # 1c: Rasio Repayment < 65%
         collateral_denom = 0.0
         for _, row in buy["rows"].iterrows():
-            cp  = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
-            hc  = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%",""), errors="coerce") or 0
+            cp = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
+            hc = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%", ""), errors="coerce") or 0
             if hc > 1:
                 hc = hc / 100
             collateral_denom += cp * (1 - hc)
@@ -329,21 +342,28 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         avg_cp_hc = collateral_denom / n_buy if n_buy else 0
         net_vol = volume_existing - total_sell_vol
         collateral_repayment = net_vol * avg_cp_hc
-
         loan_numerator = loan_existing - total_sell_val + accrued_interest
-        if collateral_repayment != 0:
-            ratio_repayment = loan_numerator / collateral_repayment
-        else:
-            ratio_repayment = float("inf")
 
-        rep_1c_pass = ratio_repayment < RATIO_THRESHOLD
-        add(
-            "1c. Rasio Repayment < 65%",
-            rep_1c_pass,
-            f"Rasio: {fmt_pct(ratio_repayment)} | Numerator: {fmt_rp(loan_numerator)} | Collateral: {fmt_rp(collateral_repayment)}"
-        )
+        if not has_repayment:
+            rep_1c_pass   = True
+            rep_1c_detail = "Tidak ada Repayment — check 1c dilewati"
+        elif collateral_repayment != 0:
+            ratio_repayment = loan_numerator / collateral_repayment
+            rep_1c_pass   = ratio_repayment < RATIO_THRESHOLD
+            rep_1c_detail = (
+                f"Rasio: {fmt_pct(ratio_repayment)} | "
+                f"Numerator: {fmt_rp(loan_numerator)} | "
+                f"Collateral: {fmt_rp(collateral_repayment)}"
+            )
+        else:
+            rep_1c_pass   = False
+            rep_1c_detail = "Collateral = 0, Rasio tidak terhitung (∞)"
+
+        add("1c. Rasio Repayment < 65%", rep_1c_pass, rep_1c_detail)
 
         # ── 2. Validasi Loan Request ──────────────────────────────────
+
+        # 2a: Per baris Volume Buy ≤ Available Qty
         loan_2a_pass = True
         loan_2a_detail = []
         for _, row in buy["rows"].iterrows():
@@ -359,10 +379,11 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "; ".join(loan_2a_detail) if loan_2a_detail else f"Total Volume Buy: {total_buy_vol:,.0f}"
         )
 
+        # 2b: Rasio Loan Request < 65%
         collateral_buy_denom = 0.0
         for _, row in buy["rows"].iterrows():
-            cp  = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
-            hc  = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%",""), errors="coerce") or 0
+            cp = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
+            hc = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%", ""), errors="coerce") or 0
             if hc > 1:
                 hc = hc / 100
             collateral_buy_denom += cp * (1 - hc)
@@ -370,27 +391,39 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         avg_cp_hc_buy = collateral_buy_denom / n_buy if n_buy else 0
         net_vol_loan = volume_existing - total_sell_vol + total_buy_vol
         collateral_loan = net_vol_loan * avg_cp_hc_buy
-
         loan_numerator2 = loan_existing - total_sell_val + accrued_interest + total_buy_val
-        if collateral_loan != 0:
-            ratio_loan = loan_numerator2 / collateral_loan
-        else:
-            ratio_loan = float("inf")
 
-        loan_2b_pass = ratio_loan < RATIO_THRESHOLD
-        add(
-            "2b. Rasio Loan Request < 65%",
-            loan_2b_pass,
-            f"Rasio: {fmt_pct(ratio_loan)} | Numerator: {fmt_rp(loan_numerator2)} | Collateral: {fmt_rp(collateral_loan)}"
-        )
+        if not has_loan_request:
+            loan_2b_pass   = True
+            loan_2b_detail = "Tidak ada Loan Request — check 2b dilewati"
+        elif collateral_loan != 0:
+            ratio_loan     = loan_numerator2 / collateral_loan
+            loan_2b_pass   = ratio_loan < RATIO_THRESHOLD
+            loan_2b_detail = (
+                f"Rasio: {fmt_pct(ratio_loan)} | "
+                f"Numerator: {fmt_rp(loan_numerator2)} | "
+                f"Collateral: {fmt_rp(collateral_loan)}"
+            )
+        else:
+            loan_2b_pass   = False
+            loan_2b_detail = "Collateral = 0, Rasio tidak terhitung (∞)"
+
+        add("2b. Rasio Loan Request < 65%", loan_2b_pass, loan_2b_detail)
 
         # ── 3. Validasi Credit Limit Nasabah ─────────────────────────
-        cl_nasabah_pass = (available_limit + total_sell_val) > total_buy_val
-        add(
-            "3. Credit Limit Nasabah",
-            cl_nasabah_pass,
-            f"Avail Limit: {fmt_rp(available_limit)} + Sell: {fmt_rp(total_sell_val)} = {fmt_rp(available_limit + total_sell_val)} | Loan Diajukan: {fmt_rp(total_buy_val)}"
-        )
+        if not has_loan_request:
+            cl_nasabah_pass   = True
+            cl_nasabah_detail = "Tidak ada Loan Request — check 3 dilewati"
+        else:
+            cl_nasabah_pass   = (available_limit + total_sell_val) > total_buy_val
+            cl_nasabah_detail = (
+                f"Avail Limit: {fmt_rp(available_limit)} + "
+                f"Sell: {fmt_rp(total_sell_val)} = "
+                f"{fmt_rp(available_limit + total_sell_val)} | "
+                f"Loan Diajukan: {fmt_rp(total_buy_val)}"
+            )
+
+        add("3. Credit Limit Nasabah", cl_nasabah_pass, cl_nasabah_detail)
 
         results[sid] = sid_results
 
@@ -415,7 +448,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 # ─────────────────────────────────────────────
 
 def generate_repayment_excel(df_sell, sid_results):
-    """Buat file Repayment Proceed — hanya SID yang LOLOS semua validasi."""
+    """Buat file Repayment Proceed — hanya SID yang LOLOS semua validasi dan punya repayment aktif."""
     today_str = datetime.today().strftime("%Y%m%d")
     passed_sids = [
         sid for sid, data in sid_results.items()
@@ -434,12 +467,12 @@ def generate_repayment_excel(df_sell, sid_results):
                 "Repayment Value":  total_val,
             })
 
-    # Sheet 2 — detail per emiten / per baris
+    # Sheet 2 — detail per emiten (hanya baris dengan volume aktif)
     sheet2_rows = []
     for sid in passed_sids:
         rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
         for _, row in rows.iterrows():
-            qty = pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0
+            qty = abs(pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0)
             if qty > 0:
                 sheet2_rows.append({
                     "SID Client": sid,
@@ -456,7 +489,7 @@ def generate_repayment_excel(df_sell, sid_results):
 
 
 def generate_loan_excel(df_buy, sid_results):
-    """Buat file Loan Request — hanya SID yang LOLOS semua validasi."""
+    """Buat file Loan Request — hanya SID yang LOLOS semua validasi dan punya loan request."""
     today_str = datetime.today().strftime("%Y%m%d")
     passed_sids = [
         sid for sid, data in sid_results.items()
@@ -475,7 +508,7 @@ def generate_loan_excel(df_buy, sid_results):
                 "Loan Value":       total_val,
             })
 
-    # Sheet 2 — detail per emiten / per baris
+    # Sheet 2 — detail per emiten
     sheet2_rows = []
     for sid in passed_sids:
         rows = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
