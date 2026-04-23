@@ -484,8 +484,8 @@ def generate_repayment_excel(df_sell, sid_results):
     sheet1_rows = []
     for sid in passed_sids:
         rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
-        total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").sum()
-        if total_val > 0:
+        total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").abs().sum()
+        if total_val != 0:
             sheet1_rows.append({
                 "Participant Code": "EP",
                 "SID Client":       sid,
