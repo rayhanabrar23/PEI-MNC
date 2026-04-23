@@ -251,7 +251,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 
     def agg_sell(sid):
         rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
-        # Volume di sell sheet bisa negatif, gunakan abs untuk total volume
         total_vol = pd.to_numeric(col(rows, SELL_VOL), errors="coerce").abs().sum()
         total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").sum()
         return {"total_volume": total_vol, "total_value": total_val, "rows": rows}
@@ -284,7 +283,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         total_buy_vol  = buy["total_volume"]
         total_buy_val  = buy["total_value"]
 
-        # Flag transaksi aktif
         has_repayment    = total_sell_vol > 0
         has_loan_request = total_buy_val > 0
 
@@ -296,6 +294,18 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                 "passed": passed,
                 "detail": detail,
             })
+
+        # ── Shared collateral calculation (dipakai oleh 1c dan 2b) ───
+        # Dihitung sekali di sini agar konsisten
+        collateral_denom = 0.0
+        n_buy = len(buy["rows"]) if len(buy["rows"]) > 0 else 1
+        for _, row in buy["rows"].iterrows():
+            cp = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
+            hc = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%", ""), errors="coerce") or 0
+            if hc > 1:
+                hc = hc / 100
+            collateral_denom += cp * (1 - hc)
+        avg_cp_hc = collateral_denom / n_buy if n_buy else 0
 
         # ── 1. Validasi Repayment Proceed ─────────────────────────────
 
@@ -316,7 +326,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         )
 
         # 1b: Total Value Sell ≤ Total Value Buy (Loan Value)
-        # ✅ FIX: Jika tidak ada Loan Request (pure repayment), check 1b dilewati / otomatis lolos
+        # Jika tidak ada Loan Request (pure repayment), check 1b dilewati
         if not has_loan_request:
             rep_1b_pass   = True
             rep_1b_detail = "Pure repayment tanpa Loan Request — check 1b dilewati"
@@ -330,29 +340,19 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         add("1b. Total Repayment Value ≤ Total Loan Value", rep_1b_pass, rep_1b_detail)
 
         # 1c: Rasio Repayment < 65%
-        collateral_denom = 0.0
-        for _, row in buy["rows"].iterrows():
-            cp = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
-            hc = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%", ""), errors="coerce") or 0
-            if hc > 1:
-                hc = hc / 100
-            collateral_denom += cp * (1 - hc)
-
-        n_buy = len(buy["rows"]) if len(buy["rows"]) > 0 else 1
-        avg_cp_hc = collateral_denom / n_buy if n_buy else 0
-        net_vol = volume_existing - total_sell_vol
-        collateral_repayment = net_vol * avg_cp_hc
-        loan_numerator = loan_existing - total_sell_val + accrued_interest
+        net_vol_repayment   = volume_existing - total_sell_vol
+        collateral_repayment = net_vol_repayment * avg_cp_hc
+        loan_numerator_repayment = loan_existing - total_sell_val + accrued_interest
 
         if not has_repayment:
             rep_1c_pass   = True
             rep_1c_detail = "Tidak ada Repayment — check 1c dilewati"
         elif collateral_repayment != 0:
-            ratio_repayment = loan_numerator / collateral_repayment
+            ratio_repayment = loan_numerator_repayment / collateral_repayment
             rep_1c_pass   = ratio_repayment < RATIO_THRESHOLD
             rep_1c_detail = (
                 f"Rasio: {fmt_pct(ratio_repayment)} | "
-                f"Numerator: {fmt_rp(loan_numerator)} | "
+                f"Numerator: {fmt_rp(loan_numerator_repayment)} | "
                 f"Collateral: {fmt_rp(collateral_repayment)}"
             )
         else:
@@ -380,17 +380,8 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         )
 
         # 2b: Rasio Loan Request < 65%
-        collateral_buy_denom = 0.0
-        for _, row in buy["rows"].iterrows():
-            cp = pd.to_numeric(row.iloc[BUY_CP], errors="coerce") or 0
-            hc = pd.to_numeric(str(row.iloc[BUY_HC]).replace("%", ""), errors="coerce") or 0
-            if hc > 1:
-                hc = hc / 100
-            collateral_buy_denom += cp * (1 - hc)
-
-        avg_cp_hc_buy = collateral_buy_denom / n_buy if n_buy else 0
-        net_vol_loan = volume_existing - total_sell_vol + total_buy_vol
-        collateral_loan = net_vol_loan * avg_cp_hc_buy
+        net_vol_loan  = volume_existing - total_sell_vol + total_buy_vol
+        collateral_loan = net_vol_loan * avg_cp_hc
         loan_numerator2 = loan_existing - total_sell_val + accrued_interest + total_buy_val
 
         if not has_loan_request:
@@ -443,16 +434,50 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 
     return results, global_result
 
+
+# ─────────────────────────────────────────────
+# HELPER: cek lolos per kelompok validasi
+# ─────────────────────────────────────────────
+
+def lolos_repayment(checks):
+    """
+    Lolos Repayment Proceed jika check 1a, 1b, 1c semua passed.
+    """
+    repayment_labels = {"1a.", "1b.", "1c."}
+    return all(
+        c["passed"]
+        for c in checks
+        if any(c["label"].startswith(prefix) for prefix in repayment_labels)
+    )
+
+def lolos_loan(checks):
+    """
+    Lolos Loan Request jika check 1a, 1c, 2a, 2b, 3 semua passed.
+    Check 1a dan 1c ikut disyaratkan karena net volume repayment
+    dipakai dalam perhitungan rasio Loan Request (2b).
+    """
+    loan_labels = {"1a.", "1c.", "2a.", "2b.", "3."}
+    return all(
+        c["passed"]
+        for c in checks
+        if any(c["label"].startswith(prefix) for prefix in loan_labels)
+    )
+
+
 # ─────────────────────────────────────────────
 # EXCEL EXPORT GENERATORS
 # ─────────────────────────────────────────────
 
 def generate_repayment_excel(df_sell, sid_results):
-    """Buat file Repayment Proceed — hanya SID yang LOLOS semua validasi dan punya repayment aktif."""
+    """
+    Buat file Repayment Proceed.
+    SID disertakan jika: lolos check 1a + 1b + 1c DAN punya repayment aktif.
+    """
     today_str = datetime.today().strftime("%Y%m%d")
+
     passed_sids = [
         sid for sid, data in sid_results.items()
-        if all(c["passed"] for c in data["checks"])
+        if lolos_repayment(data["checks"])
     ]
 
     # Sheet 1 — ringkasan per SID
@@ -489,11 +514,17 @@ def generate_repayment_excel(df_sell, sid_results):
 
 
 def generate_loan_excel(df_buy, sid_results):
-    """Buat file Loan Request — hanya SID yang LOLOS semua validasi dan punya loan request."""
+    """
+    Buat file Loan Request.
+    SID disertakan jika: lolos check 1a + 1c + 2a + 2b + 3 DAN punya loan request aktif.
+    Check 1a dan 1c ikut disyaratkan karena data repayment mempengaruhi
+    perhitungan rasio Loan Request.
+    """
     today_str = datetime.today().strftime("%Y%m%d")
+
     passed_sids = [
         sid for sid, data in sid_results.items()
-        if all(c["passed"] for c in data["checks"])
+        if lolos_loan(data["checks"])
     ]
 
     # Sheet 1 — ringkasan per SID
@@ -527,6 +558,7 @@ def generate_loan_excel(df_buy, sid_results):
         pd.DataFrame(sheet2_rows).to_excel(writer, sheet_name="Detail Collateral", index=False)
     buf.seek(0)
     return buf, f"Loan Request {today_str}.xlsx"
+
 
 # ─────────────────────────────────────────────
 # UI
@@ -612,13 +644,17 @@ if run_btn:
         )
 
     # ── Summary metrics ──────────────────────────────────────────────
-    total_sids  = len(sid_results)
-    total_pass  = sum(1 for v in sid_results.values() if all(c["passed"] for c in v["checks"]))
-    total_fail  = total_sids - total_pass
-    global_pass = global_result["passed"]
+    total_sids        = len(sid_results)
+    total_pass_rep    = sum(1 for v in sid_results.values() if lolos_repayment(v["checks"]))
+    total_pass_loan   = sum(1 for v in sid_results.values() if lolos_loan(v["checks"]))
+    total_pass_all    = sum(
+        1 for v in sid_results.values()
+        if all(c["passed"] for c in v["checks"])
+    )
+    global_pass       = global_result["passed"]
 
     st.markdown("### 📊 Ringkasan Hasil Validasi")
-    m1, m2, m3, m4 = st.columns(4)
+    m1, m2, m3, m4, m5 = st.columns(5)
 
     with m1:
         st.markdown(f'''
@@ -629,16 +665,22 @@ if run_btn:
     with m2:
         st.markdown(f'''
         <div class="metric-card">
-            <div class="metric-label">Lolos Semua</div>
-            <div class="metric-value" style="color:#3fb950">{total_pass}</div>
+            <div class="metric-label">Lolos Repayment</div>
+            <div class="metric-value" style="color:#3fb950">{total_pass_rep}</div>
         </div>''', unsafe_allow_html=True)
     with m3:
         st.markdown(f'''
         <div class="metric-card">
-            <div class="metric-label">Ada Masalah</div>
-            <div class="metric-value" style="color:#f85149">{total_fail}</div>
+            <div class="metric-label">Lolos Loan</div>
+            <div class="metric-value" style="color:#3fb950">{total_pass_loan}</div>
         </div>''', unsafe_allow_html=True)
     with m4:
+        st.markdown(f'''
+        <div class="metric-card">
+            <div class="metric-label">Lolos Semua</div>
+            <div class="metric-value" style="color:#d29922">{total_pass_all}</div>
+        </div>''', unsafe_allow_html=True)
+    with m5:
         cl_color = "#3fb950" if global_pass else "#f85149"
         cl_label = "LOLOS" if global_pass else "GAGAL"
         st.markdown(f'''
@@ -661,12 +703,23 @@ if run_btn:
     # ── Per-SID results ───────────────────────────────────────────────
     section("VALIDASI PER NASABAH")
 
-    for sid, data in sid_results.items():
-        checks = data["checks"]
-        all_pass = all(c["passed"] for c in checks)
-        status_icon = "✅" if all_pass else "❌"
+    # Legend singkat tentang status per nasabah
+    st.markdown(
+        '<p style="color:#8b949e;font-family:\'IBM Plex Mono\',monospace;font-size:0.75rem;">'
+        '🟢 R = Lolos Repayment &nbsp;|&nbsp; 🟢 L = Lolos Loan &nbsp;|&nbsp; '
+        '🔴 R = Gagal Repayment &nbsp;|&nbsp; 🔴 L = Gagal Loan</p>',
+        unsafe_allow_html=True,
+    )
 
-        with st.expander(f"{status_icon} {sid} — {data['name']}", expanded=not all_pass):
+    for sid, data in sid_results.items():
+        checks       = data["checks"]
+        r_pass       = lolos_repayment(checks)
+        l_pass       = lolos_loan(checks)
+        r_icon       = "✅ R" if r_pass else "❌ R"
+        l_icon       = "✅ L" if l_pass else "❌ L"
+        expanded     = not (r_pass and l_pass)
+
+        with st.expander(f"{r_icon} | {l_icon} | {sid} — {data['name']}", expanded=expanded):
             for check in checks:
                 if check["passed"]:
                     pass_box(f"{check['label']} &nbsp;|&nbsp; {check['detail']}")
@@ -683,7 +736,8 @@ if run_btn:
         row = {"SID": sid, "Nama": data["name"]}
         for check in data["checks"]:
             row[check["label"]] = "LOLOS" if check["passed"] else "GAGAL"
-        row["Overall"] = "LOLOS" if all(c["passed"] for c in data["checks"]) else "GAGAL"
+        row["Status Repayment"] = "LOLOS" if lolos_repayment(data["checks"]) else "GAGAL"
+        row["Status Loan"]      = "LOLOS" if lolos_loan(data["checks"])      else "GAGAL"
         summary_rows.append(row)
 
     df_summary = pd.DataFrame(summary_rows)
@@ -705,7 +759,8 @@ if run_btn:
     section("📤 Export ke Dashboard Kantor")
     st.markdown(
         '<p style="color:#8b949e;font-family:\'IBM Plex Mono\',monospace;font-size:0.8rem;">'
-        'Hanya nasabah yang LOLOS semua validasi yang akan disertakan dalam file berikut.</p>',
+        'Repayment Proceed: lolos 1a + 1b + 1c. &nbsp;|&nbsp; '
+        'Loan Request: lolos 1a + 1c + 2a + 2b + 3.</p>',
         unsafe_allow_html=True,
     )
 
