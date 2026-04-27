@@ -231,6 +231,8 @@ if all(required_files):
                     df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
                 )
 
+            sell_merged = sell_merged.merge(risk_sub, on='stock_key', how='left')
+            
             sell_out = pd.DataFrame()
             sell_out['SID']          = sell_merged.get('sid_key', '')
             sell_out['STOCK CODE']   = sell_merged['stock_key']
