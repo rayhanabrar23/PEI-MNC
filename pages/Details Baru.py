@@ -98,19 +98,16 @@ if all(required_files):
             df_inv   = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
             df_sid   = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
             df_risk  = find_and_rename(pd.read_excel(file_risk,       dtype=str))
-            df_mbuy  = find_and_rename(pd.read_excel(file_m_buy,      dtype=str))
-            df_msell = find_and_rename(pd.read_excel(file_m_sell,     dtype=str))
 
-            # Strip whitespace di kolom kunci
-            for df in [df_inv, df_sid, df_mbuy, df_msell, df_risk]:
-                for c in ['cid_key', 'sid_key', 'stock_key']:
-                    if c in df.columns:
-                        df[c] = df[c].astype(str).str.strip()
-
-            df_inv   = clean_num(df_inv)
-            df_mbuy  = clean_num(df_mbuy)
-            df_msell = clean_num(df_msell)
-            df_risk  = clean_num(df_risk)
+            # Margin Buy & Sell: rename manual supaya CLOSING PRICE, HAIRCUT, dll tetap nama aslinya
+            df_mbuy  = pd.read_excel(file_m_buy,  dtype=str).rename(columns={
+            'SID':        'sid_key',
+            'STOCK CODE': 'stock_key',
+            })
+            df_msell = pd.read_excel(file_m_sell, dtype=str).rename(columns={
+            'SID':        'sid_key',
+            'STOCK CODE': 'stock_key',
+            })
 
             # ── 4b. VOLUME FORMULA (netting B vs S per nasabah-saham) ──
             # Volume_Formula sudah dihitung di Netting Invoice → pakai langsung
