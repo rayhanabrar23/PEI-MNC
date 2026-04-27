@@ -203,13 +203,13 @@ if all(required_files):
             def nett_buy(row):
                 k = row.get('CLOSING PRICE', '')
                 m = row.get('AVAILABLE MARKET VALUE', '')
-                p = row['PEI (Risk/Porto)']   # positif
-                s = row['Volume']
+                p = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce')
+                s = pd.to_numeric(row['Volume'], errors='coerce')
 
                 if k == '' or m == '': return ''
-                if pd.isna(p) or p == 0: return ''
+                if pd.isna(p) or p == 0: return 'NON MARGIN'
                 if p > 0:
-                    if s < 0: return ''
+                    if pd.isna(s) or s < 0: return ''
                     return 'LOAN PEI' if s > p else 'LOAN PARTIAL'
                 return ''
 
@@ -252,15 +252,15 @@ if all(required_files):
 
             # Fix nett_sell sesuai logika Excel
             def nett_sell(row):
-                k = row.get('CLOSING PRICE', '')   # kolom K
-                m = row.get('AVAILABLE SELL VALUE', '')  # kolom M
-                p = row['PEI (Risk/Porto)']        # negatif
-                s = row['Volume']                  # kolom S
+                k = row.get('CLOSING PRICE', '')
+                m = row.get('AVAILABLE SELL VALUE', '')
+                p = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce')
+                s = pd.to_numeric(row['Volume'], errors='coerce')
 
                 if k == '' or m == '': return ''
-                if pd.isna(p) or p == 0: return ''
+                if pd.isna(p) or p == 0: return 'NON MARGIN'
                 if p < 0:
-                    if s == 0: return ''
+                    if pd.isna(s) or s == 0: return ''
                     return 'REPAY PEI' if s < abs(p) else 'ALL STOCK REPAY'
                 return ''
     
