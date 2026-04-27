@@ -1,24 +1,3 @@
-import streamlit as st import pandas as pd import io # ───────────────────────────────────────────── # 1. KONFIGURASI HALAMAN # ───────────────────────────────────────────── st.set_page_config(page_title="TRX PEI Details", layout="wide", page_icon="📑") st.title("📑 TRX PEI Details Genera
-
-pasted
-
-
-
-import streamlit as st import pandas as pd import io # 1. Konfigurasi Halaman st.set_page_config(page_title="TRX PEI Details", layout="wide") st.title("📑 TRX PEI Details Generator") st.info("Sistem ini hanya akan memproses data nasabah yang terdaftar di SID Client (Bersih).") # --- 2.
-
-pasted
-
-
-dari code pertama apa yang baru dari code lama ini
-
-Anda kehabisan pesan gratis sampai 14.20
-Tingkatkan
-
-Konten yang ditempel
-25.42 KB •509 baris
-•
-Format mungkin tidak konsisten dengan sumber
-
 import streamlit as st
 import pandas as pd
 import io
