@@ -243,18 +243,17 @@ if all(required_files):
                         stock = parts[3].strip().upper() if len(parts) > 3 else ''
                         vol   = pd.to_numeric(parts[4], errors='coerce') if len(parts) > 4 else 0
                         vol   = vol if pd.notna(vol) else 0
-
-                    if stock and vol > 0:
-                        sid_match = df_sid[df_sid['sid_key'].astype(str).str.strip() == current_sid]
-                        if not sid_match.empty:
-                            cid = str(sid_match['cid_key'].values[0]).strip()
-                            porto_coll_lookup[(cid, stock)] = vol
-                            porto_rows.append({
-                                'CID':       cid,
-                                'SID':       current_sid,
-                                'stock_key': stock,
-                                'coll_vol':  vol,
-                            })
+                        if stock and vol > 0:
+                            sid_match = df_sid[df_sid['sid_key'].astype(str).str.strip() == current_sid]
+                            if not sid_match.empty:
+                                cid = str(sid_match['cid_key'].values[0]).strip()
+                                porto_coll_lookup[(cid, stock)] = vol
+                                porto_rows.append({
+                                    'CID':       cid,
+                                    'SID':       current_sid,
+                                    'stock_key': stock,
+                                    'coll_vol':  vol,
+                                })
 
                 if porto_rows:
                     df_porto_all = pd.DataFrame(porto_rows)
