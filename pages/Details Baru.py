@@ -149,9 +149,9 @@ if all(required_files):
             # ── 4c. FILTER HANYA NASABAH PEI (ada di SID Client) ────
             pei_cids = set(df_sid['cid_key'].astype(str).str.strip())
 
-            # Kolom bantu: SID lookup dari df_sid
-            sid_lookup = df_sid.set_index('cid_key')[['sid_key', 'name_key']].to_dict('index')
-
+            # Drop duplikat CID sebelum dijadikan lookup
+            df_sid_unique = df_sid.drop_duplicates(subset='cid_key', keep='first')
+            sid_lookup = df_sid_unique.set_index('cid_key')[['sid_key', 'name_key']].to_dict('index')
             # Risk parameter lookup: stock → (avail_qty, haircut)
             risk_sub = df_risk[['stock_key', 'avail_risk']].drop_duplicates('stock_key').copy()
             if 'haircut_key' in df_risk.columns:
