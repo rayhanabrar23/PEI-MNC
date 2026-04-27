@@ -413,7 +413,7 @@ if all(required_files):
                     if val == 'LOAN PARTIAL':   return 'background-color:#fff3cd;color:#856404'
                     return ''
                 st.dataframe(
-                    buy_out.style.applymap(color_nett, subset=['NETT']),
+                    buy_out.style.map(color_nett, subset=['NETT']),
                     use_container_width=True
                 )
             else:
@@ -428,7 +428,7 @@ if all(required_files):
                     if val == 'ALL STOCK REPAY': return 'background-color:#d4edda;color:#155724'
                     return ''
                 st.dataframe(
-                    sell_out.style.applymap(color_nett_sell, subset=['NETT']),
+                    sell_out.style.map(color_nett_sell, subset=['NETT']),
                     use_container_width=True
                 )
             else:
