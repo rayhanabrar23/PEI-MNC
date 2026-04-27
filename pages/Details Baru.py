@@ -19,13 +19,16 @@ st.info(
 # ─────────────────────────────────────────────
 
 def find_and_rename(df):
-    """Standarisasi nama kolom dari berbagai format sumber data."""
     mapping = {
+        'stock_key':  ['no_share', 'no_shares', 'Stock Code', 'Stockcode', 'Stock', 'SYMBOL'],
         'sid_key':    ['SID', 'SID_No', 'Client_SID'],
         'cid_key':    ['no_cust', 'CID', 'Client_ID', 'Account_No'],
         'avail_risk': ['Available Quantity', 'availablequantity', 'Available Qty'],
         'name_key':   ['Name', 'Client_Name', 'Nama'],
-        
+        'haircut_key':['Haircut', 'haircut', 'HC'],
+        'price_key':  ['close_prc', 'Price', 'PRICE'],
+        # CLOSING PRICE dan STOCK CODE (kapital semua) tidak di sini
+        # karena itu nama resmi di Margin Buy/Sell yang tidak pakai find_and_rename
     }
     rename_dict = {}
     for official, aliases in mapping.items():
