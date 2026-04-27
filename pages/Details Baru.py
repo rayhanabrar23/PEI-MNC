@@ -21,14 +21,11 @@ st.info(
 def find_and_rename(df):
     """Standarisasi nama kolom dari berbagai format sumber data."""
     mapping = {
-        'stock_key':  ['no_share', 'no_shares', 'STOCK CODE', 'Stockcode',
-                        'Stock', 'SYMBOL', 'Stock Code', 'StockCode'],
         'sid_key':    ['SID', 'SID_No', 'Client_SID'],
         'cid_key':    ['no_cust', 'CID', 'Client_ID', 'Account_No'],
         'avail_risk': ['Available Quantity', 'availablequantity', 'Available Qty'],
         'name_key':   ['Name', 'Client_Name', 'Nama'],
-        'haircut_key':['Haircut', 'haircut', 'HC'],
-        'price_key':  ['close_prc', 'Price', 'PRICE'],
+        
     }
     rename_dict = {}
     for official, aliases in mapping.items():
