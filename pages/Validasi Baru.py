@@ -267,8 +267,8 @@ def parse_credit_limit_file(content: str):
 def load_hasil_mnc(uploaded_file):
     """Load Hasil_MNC excel. Returns (df_sell, df_buy)."""
     xls    = pd.ExcelFile(uploaded_file)
-    df_sell = pd.read_excel(xls, sheet_name="Sell", header=0)
-    df_buy  = pd.read_excel(xls, sheet_name="Buy",  header=0)
+    df_sell = pd.read_excel(xls, sheet_name="Sell (Repayment)", header=0)
+    df_buy  = pd.read_excel(xls, sheet_name="Buy (Loan)",  header=0)
     return df_sell, df_buy
 
 # ─────────────────────────────────────────────
