@@ -13,7 +13,7 @@ st.set_page_config(
 )
 
 # ─────────────────────────────────────────────
-# CUSTOM CSS
+# CUSTOM CSS — Light Theme
 # ─────────────────────────────────────────────
 st.markdown("""
 <style>
@@ -24,17 +24,17 @@ html, body, [class*="css"] {
 }
 
 .stApp {
-    background-color: #0d1117;
-    color: #e6edf3;
+    background-color: #f5f7fa;
+    color: #1a1f2e;
 }
 
 h1, h2, h3 {
     font-family: 'IBM Plex Mono', monospace;
-    color: #58a6ff;
+    color: #1a5fe8;
 }
 
 .stButton > button {
-    background: #1f6feb;
+    background: #1a5fe8;
     color: white;
     border: none;
     border-radius: 6px;
@@ -44,7 +44,7 @@ h1, h2, h3 {
     transition: background 0.2s;
 }
 .stButton > button:hover {
-    background: #388bfd;
+    background: #3a7af0;
 }
 
 .validation-box {
@@ -55,40 +55,41 @@ h1, h2, h3 {
     font-size: 0.85rem;
 }
 .pass {
-    background: #0d2818;
-    border-left: 4px solid #3fb950;
-    color: #3fb950;
+    background: #e8f8ed;
+    border-left: 4px solid #22a84a;
+    color: #166332;
 }
 .fail {
-    background: #2d1515;
-    border-left: 4px solid #f85149;
-    color: #f85149;
+    background: #fdecea;
+    border-left: 4px solid #e53935;
+    color: #b71c1c;
 }
 .warn {
-    background: #2d2200;
-    border-left: 4px solid #d29922;
-    color: #d29922;
+    background: #fff8e1;
+    border-left: 4px solid #f9a825;
+    color: #7a5700;
 }
 .section-header {
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.75rem;
     letter-spacing: 0.15em;
     text-transform: uppercase;
-    color: #8b949e;
+    color: #5a6278;
     margin: 1.5rem 0 0.5rem 0;
-    border-bottom: 1px solid #21262d;
+    border-bottom: 1px solid #d0d7e3;
     padding-bottom: 0.3rem;
 }
 .metric-card {
-    background: #161b22;
-    border: 1px solid #21262d;
+    background: #ffffff;
+    border: 1px solid #d0d7e3;
     border-radius: 8px;
     padding: 0.75rem 1rem;
     text-align: center;
+    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
 }
 .metric-label {
     font-size: 0.7rem;
-    color: #8b949e;
+    color: #5a6278;
     font-family: 'IBM Plex Mono', monospace;
     text-transform: uppercase;
     letter-spacing: 0.1em;
@@ -99,14 +100,22 @@ h1, h2, h3 {
     font-family: 'IBM Plex Mono', monospace;
 }
 .sid-header {
-    background: #161b22;
-    border: 1px solid #30363d;
+    background: #ffffff;
+    border: 1px solid #d0d7e3;
     border-radius: 6px;
     padding: 0.5rem 1rem;
     font-family: 'IBM Plex Mono', monospace;
     font-size: 0.9rem;
-    color: #79c0ff;
+    color: #1a5fe8;
     margin: 1rem 0 0.25rem 0;
+}
+
+/* Override Streamlit default dark elements */
+.stDataFrame { background: #ffffff; }
+[data-testid="stExpander"] {
+    background: #ffffff;
+    border: 1px solid #d0d7e3;
+    border-radius: 8px;
 }
 </style>
 """, unsafe_allow_html=True)
@@ -296,7 +305,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             })
 
         # ── Shared collateral calculation (dipakai oleh 1c dan 2b) ───
-        # Dihitung sekali di sini agar konsisten
         collateral_denom = 0.0
         n_buy = len(buy["rows"]) if len(buy["rows"]) > 0 else 1
         for _, row in buy["rows"].iterrows():
@@ -326,7 +334,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         )
 
         # 1b: Total Value Sell ≤ Total Value Buy (Loan Value)
-        # Jika tidak ada Loan Request (pure repayment), check 1b dilewati
         if not has_loan_request:
             rep_1b_pass   = True
             rep_1b_detail = "Pure repayment tanpa Loan Request — check 1b dilewati"
@@ -453,8 +460,6 @@ def lolos_repayment(checks):
 def lolos_loan(checks):
     """
     Lolos Loan Request jika check 1a, 1c, 2a, 2b, 3 semua passed.
-    Check 1a dan 1c ikut disyaratkan karena net volume repayment
-    dipakai dalam perhitungan rasio Loan Request (2b).
     """
     loan_labels = {"1a.", "1c.", "2a.", "2b.", "3."}
     return all(
@@ -471,7 +476,12 @@ def lolos_loan(checks):
 def generate_repayment_excel(df_sell, sid_results):
     """
     Buat file Repayment Proceed.
-    SID disertakan jika: lolos check 1a + 1b + 1c DAN punya repayment aktif.
+    SID disertakan jika: lolos check 1a + 1b + 1c DAN punya repayment aktif (volume > 0).
+
+    BUG FIX: filter menggunakan total_volume (bukan total_value) untuk deteksi
+    apakah SID punya repayment aktif, karena value bisa bernilai negatif di file
+    sehingga abs().sum() vs sum() bisa memberi hasil berbeda. Volume selalu positif
+    setelah abs(), sehingga lebih andal sebagai penentu keaktifan repayment.
     """
     today_str = datetime.today().strftime("%Y%m%d")
 
@@ -481,11 +491,15 @@ def generate_repayment_excel(df_sell, sid_results):
     ]
 
     # Sheet 1 — ringkasan per SID
+    # Gunakan abs() pada value agar konsisten dengan sign konvensi file sell
     sheet1_rows = []
     for sid in passed_sids:
         rows = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
-        total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").abs().sum()
-        if total_val != 0:
+        total_vol = pd.to_numeric(col(rows, SELL_VOL), errors="coerce").abs().sum()
+        # Hanya masukkan SID yang memang punya volume sell aktif
+        if total_vol > 0:
+            # Nilai repayment = abs dari total value (karena sell bisa bertanda negatif)
+            total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").abs().sum()
             sheet1_rows.append({
                 "Participant Code": "EP",
                 "SID Client":       sid,
@@ -517,8 +531,6 @@ def generate_loan_excel(df_buy, sid_results):
     """
     Buat file Loan Request.
     SID disertakan jika: lolos check 1a + 1c + 2a + 2b + 3 DAN punya loan request aktif.
-    Check 1a dan 1c ikut disyaratkan karena data repayment mempengaruhi
-    perhitungan rasio Loan Request.
     """
     today_str = datetime.today().strftime("%Y%m%d")
 
@@ -531,8 +543,10 @@ def generate_loan_excel(df_buy, sid_results):
     sheet1_rows = []
     for sid in passed_sids:
         rows = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
+        total_vol = pd.to_numeric(col(rows, BUY_VOL), errors="coerce").sum()
         total_val = pd.to_numeric(col(rows, BUY_VAL), errors="coerce").sum()
-        if total_val > 0:
+        # Gunakan volume sebagai penentu keaktifan loan (konsisten dengan repayment fix)
+        if total_vol > 0:
             sheet1_rows.append({
                 "Participant Code": "EP",
                 "SID Client":       sid,
@@ -565,7 +579,7 @@ def generate_loan_excel(df_buy, sid_results):
 # ─────────────────────────────────────────────
 
 st.markdown("# 🔍 Validasi MNC")
-st.markdown('<p style="color:#8b949e;font-family:\'IBM Plex Mono\',monospace;font-size:0.85rem;">Sistem Validasi Repayment & Loan Request</p>', unsafe_allow_html=True)
+st.markdown('<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.85rem;">Sistem Validasi Repayment & Loan Request</p>', unsafe_allow_html=True)
 
 st.divider()
 
@@ -660,28 +674,28 @@ if run_btn:
         st.markdown(f'''
         <div class="metric-card">
             <div class="metric-label">Total Nasabah</div>
-            <div class="metric-value" style="color:#79c0ff">{total_sids}</div>
+            <div class="metric-value" style="color:#1a5fe8">{total_sids}</div>
         </div>''', unsafe_allow_html=True)
     with m2:
         st.markdown(f'''
         <div class="metric-card">
             <div class="metric-label">Lolos Repayment</div>
-            <div class="metric-value" style="color:#3fb950">{total_pass_rep}</div>
+            <div class="metric-value" style="color:#22a84a">{total_pass_rep}</div>
         </div>''', unsafe_allow_html=True)
     with m3:
         st.markdown(f'''
         <div class="metric-card">
             <div class="metric-label">Lolos Loan</div>
-            <div class="metric-value" style="color:#3fb950">{total_pass_loan}</div>
+            <div class="metric-value" style="color:#22a84a">{total_pass_loan}</div>
         </div>''', unsafe_allow_html=True)
     with m4:
         st.markdown(f'''
         <div class="metric-card">
             <div class="metric-label">Lolos Semua</div>
-            <div class="metric-value" style="color:#d29922">{total_pass_all}</div>
+            <div class="metric-value" style="color:#f9a825">{total_pass_all}</div>
         </div>''', unsafe_allow_html=True)
     with m5:
-        cl_color = "#3fb950" if global_pass else "#f85149"
+        cl_color = "#22a84a" if global_pass else "#e53935"
         cl_label = "LOLOS" if global_pass else "GAGAL"
         st.markdown(f'''
         <div class="metric-card">
@@ -703,9 +717,8 @@ if run_btn:
     # ── Per-SID results ───────────────────────────────────────────────
     section("VALIDASI PER NASABAH")
 
-    # Legend singkat tentang status per nasabah
     st.markdown(
-        '<p style="color:#8b949e;font-family:\'IBM Plex Mono\',monospace;font-size:0.75rem;">'
+        '<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.75rem;">'
         '🟢 R = Lolos Repayment &nbsp;|&nbsp; 🟢 L = Lolos Loan &nbsp;|&nbsp; '
         '🔴 R = Gagal Repayment &nbsp;|&nbsp; 🔴 L = Gagal Loan</p>',
         unsafe_allow_html=True,
@@ -758,7 +771,7 @@ if run_btn:
     # ── Export ke Dashboard Kantor ────────────────────────────────────
     section("📤 Export ke Dashboard Kantor")
     st.markdown(
-        '<p style="color:#8b949e;font-family:\'IBM Plex Mono\',monospace;font-size:0.8rem;">'
+        '<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.8rem;">'
         'Repayment Proceed: lolos 1a + 1b + 1c. &nbsp;|&nbsp; '
         'Loan Request: lolos 1a + 1c + 2a + 2b + 3.</p>',
         unsafe_allow_html=True,
