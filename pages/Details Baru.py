@@ -28,7 +28,7 @@ def find_and_rename(df):
         'avail_risk': ['Available Quantity', 'availablequantity', 'Available Qty'],
         'name_key':   ['Name', 'Client_Name', 'Nama'],
         'haircut_key':['Haircut', 'haircut', 'HC'],
-        'price_key':  ['CLOSING PRICE', 'close_prc', 'Price', 'PRICE'],
+        'price_key':  ['close_prc', 'Price', 'PRICE'],
     }
     rename_dict = {}
     for official, aliases in mapping.items():
