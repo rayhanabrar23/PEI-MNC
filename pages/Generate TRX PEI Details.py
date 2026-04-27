@@ -86,7 +86,7 @@ with col_u2:
 
 with col_u3:
     file_m_sell     = st.file_uploader("5. Margin Sell (xlsx)",       type=['xlsx'])
-    file_ep         = st.file_uploader("6. File EP (txt) [Opsional]", type=['txt'])
+    file_ep         = st.file_uploader("6. File OP", type=['txt'])
 
 # ─────────────────────────────────────────────
 # 4. PROSES DATA (hanya jika 5 file wajib ada)
