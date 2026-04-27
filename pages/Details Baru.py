@@ -237,6 +237,9 @@ if all(required_files):
                         current_sid = parts[3].strip() if len(parts) > 3 else None
 
                     elif parts[0] == '1' and current_sid:
+                        if len(parts) < 5:
+                            continue
+                            
                         stock = parts[3].strip().upper() if len(parts) > 3 else ''
                         vol   = pd.to_numeric(parts[4], errors='coerce') if len(parts) > 4 else 0
                         vol   = vol if pd.notna(vol) else 0
