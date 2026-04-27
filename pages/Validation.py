@@ -295,7 +295,12 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
         has_repayment    = total_sell_vol > 0
         has_loan_request = total_buy_val > 0
 
-        sid_results = {"name": name, "checks": []}
+        sid_results = {
+            "name": name,
+            "checks": [],
+            "has_repayment": has_repayment,
+            "has_loan_request": has_loan_request,
+        }
 
         def add(label, passed, detail=""):
             sid_results["checks"].append({
@@ -446,25 +451,39 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 # HELPER: cek lolos per kelompok validasi
 # ─────────────────────────────────────────────
 
-def lolos_repayment(checks):
+def lolos_repayment(sid_data):
     """
-    Lolos Repayment Proceed jika check 1a, 1b, 1c semua passed.
+    Lolos Repayment Proceed jika:
+    - SID benar-benar punya volume sell aktif (has_repayment=True)
+    - Semua check 1a, 1b, 1c passed
+
+    Tanpa syarat has_repayment=True, SID yang tidak punya sell sama sekali
+    akan trivial lolos karena semua checknya di-skip.
     """
+    if not sid_data.get("has_repayment", False):
+        return False
     repayment_labels = {"1a.", "1b.", "1c."}
     return all(
         c["passed"]
-        for c in checks
+        for c in sid_data["checks"]
         if any(c["label"].startswith(prefix) for prefix in repayment_labels)
     )
 
-def lolos_loan(checks):
+def lolos_loan(sid_data):
     """
-    Lolos Loan Request jika check 1a, 1c, 2a, 2b, 3 semua passed.
+    Lolos Loan Request jika:
+    - SID benar-benar punya loan request aktif (has_loan_request=True)
+    - Semua check 1a, 1c, 2a, 2b, 3 passed
+
+    Tanpa syarat has_loan_request=True, SID yang tidak punya buy sama sekali
+    akan trivial lolos karena checknya di-skip.
     """
+    if not sid_data.get("has_loan_request", False):
+        return False
     loan_labels = {"1a.", "1c.", "2a.", "2b.", "3."}
     return all(
         c["passed"]
-        for c in checks
+        for c in sid_data["checks"]
         if any(c["label"].startswith(prefix) for prefix in loan_labels)
     )
 
@@ -487,7 +506,7 @@ def generate_repayment_excel(df_sell, sid_results):
 
     passed_sids = [
         sid for sid, data in sid_results.items()
-        if lolos_repayment(data["checks"])
+        if lolos_repayment(data)
     ]
 
     # Sheet 1 — ringkasan per SID
@@ -536,7 +555,7 @@ def generate_loan_excel(df_buy, sid_results):
 
     passed_sids = [
         sid for sid, data in sid_results.items()
-        if lolos_loan(data["checks"])
+        if lolos_loan(data)
     ]
 
     # Sheet 1 — ringkasan per SID
@@ -659,8 +678,8 @@ if run_btn:
 
     # ── Summary metrics ──────────────────────────────────────────────
     total_sids        = len(sid_results)
-    total_pass_rep    = sum(1 for v in sid_results.values() if lolos_repayment(v["checks"]))
-    total_pass_loan   = sum(1 for v in sid_results.values() if lolos_loan(v["checks"]))
+    total_pass_rep    = sum(1 for v in sid_results.values() if lolos_repayment(v))
+    total_pass_loan   = sum(1 for v in sid_results.values() if lolos_loan(v))
     total_pass_all    = sum(
         1 for v in sid_results.values()
         if all(c["passed"] for c in v["checks"])
@@ -726,8 +745,8 @@ if run_btn:
 
     for sid, data in sid_results.items():
         checks       = data["checks"]
-        r_pass       = lolos_repayment(checks)
-        l_pass       = lolos_loan(checks)
+        r_pass       = lolos_repayment(data)
+        l_pass       = lolos_loan(data)
         r_icon       = "✅ R" if r_pass else "❌ R"
         l_icon       = "✅ L" if l_pass else "❌ L"
         expanded     = not (r_pass and l_pass)
@@ -749,8 +768,8 @@ if run_btn:
         row = {"SID": sid, "Nama": data["name"]}
         for check in data["checks"]:
             row[check["label"]] = "LOLOS" if check["passed"] else "GAGAL"
-        row["Status Repayment"] = "LOLOS" if lolos_repayment(data["checks"]) else "GAGAL"
-        row["Status Loan"]      = "LOLOS" if lolos_loan(data["checks"])      else "GAGAL"
+        row["Status Repayment"] = "LOLOS" if lolos_repayment(data) else "GAGAL"
+        row["Status Loan"]      = "LOLOS" if lolos_loan(data)      else "GAGAL"
         summary_rows.append(row)
 
     df_summary = pd.DataFrame(summary_rows)
