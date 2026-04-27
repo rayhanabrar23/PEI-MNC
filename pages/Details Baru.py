@@ -218,65 +218,10 @@ if all(required_files):
 
             buy_out['NETT'] = buy_out.apply(nett_buy, axis=1)
 
-            # ── 4e. SHEET SELL (Margin Sell – Repayment PEI) ─────────
-            df_sell_inv = df_inv[
-                (df_inv['bors'] == 'S') &
-                (df_inv['cid_key'].isin(pei_cids)) &
-                (df_inv['Volume_Formula'].abs() > 0)
-            ].copy()
-
-            if 'sid_key' not in df_sell_inv.columns:
-                sell_merged = df_sell_inv.merge(
-                    df_sid[['cid_key', 'sid_key', 'name_key']], on='cid_key', how='left'
-                ).merge(df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m'))
-            else:
-                sell_merged = df_sell_inv.merge(
-                    df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
-                )
-            # Tambahkan ini SEBELUM baris sell_merged.merge(risk_sub...)
-            sell_merged['stock_key'] = sell_merged['stock_key'].astype(str).str.strip().str.upper()
-            risk_sub['stock_key']    = risk_sub['stock_key'].astype(str).str.strip().str.upper()
-
-            sell_merged = sell_merged.merge(risk_sub, on='stock_key', how='left')
-            
-            sell_out = pd.DataFrame()
-            sell_out['SID']          = sell_merged.get('sid_key', '')
-            sell_out['STOCK CODE']   = sell_merged['stock_key']
-            for col in ['REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY',
-                        'AVAILABLE SELL QUANTITY', 'CLOSING PRICE', 'AVAILABLE SELL VALUE']:
-                sell_out[col] = sell_merged[col] if col in sell_merged.columns else 0
-            sell_out['B/S']          = 'S'
-            sell_out['CID']          = sell_merged['cid_key']
-            sell_out['Name']         = sell_merged.get('name_key', '')
-            sell_out['Stock']        = sell_merged['stock_key']
-            sell_out['Volume']       = sell_merged['Volume_Formula'].abs()
-            sell_out['Value']        = sell_merged.apply(
-                lambda r: r.get('AVAILABLE SELL VALUE', r.get('amt_pay', 0))
-                          if r['Volume_Formula'] != 0 else 0,
-                axis=1
-            )
-            # Sell - PEI (Risk/Porto) diisi negatif dari avail_risk
-            sell_out['PEI (Risk/Porto)'] = sell_merged.get('avail_risk', pd.Series(0, index=sell_merged.index)) * -1
-
-            # Fix nett_sell sesuai logika Excel
-            def nett_sell(row):
-                k = row.get('CLOSING PRICE', '')
-                m = row.get('AVAILABLE SELL VALUE', '')
-                p = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce')
-                s = pd.to_numeric(row['Volume'], errors='coerce')
-
-                if k == '' or m == '': return ''
-                if pd.isna(p) or p == 0: return 'NON MARGIN'
-                if p < 0:
-                    if pd.isna(s) or s == 0: return ''
-                    return 'REPAY PEI' if s < abs(p) else 'ALL STOCK REPAY'
-                return ''
-    
-            sell_out['NETT'] = sell_out.apply(nett_sell, axis=1)
-
             # ── 4f. SHEET PORTOFOLIO KOLATERAL ───────────────────────
             porto_sheets = {}
             df_porto_all = pd.DataFrame()
+            porto_coll_lookup = {}
 
             if file_porto is not None:
                 xl_porto = pd.ExcelFile(file_porto)
@@ -320,6 +265,87 @@ if all(required_files):
                 if porto_rows:
                     df_porto_all = pd.concat(porto_rows, ignore_index=True)
 
+                 # Build lookup hanya kalau porto ada
+                for cid_sheet, df_p in porto_sheets.items():
+                    for _, prow in df_p.iterrows():
+                        stock = str(prow.get('stock_key', '')).strip().upper()
+                        vol   = pd.to_numeric(prow.get('coll_vol', 0), errors='coerce') or 0
+                        if stock and vol > 0:
+                            porto_coll_lookup[(str(cid_sheet).strip(), stock)] = vol
+                
+                # Buat lookup: (cid, stock) → coll_vol dari Portofolio Client
+                porto_coll_lookup = {}
+                if porto_sheets:
+                    for cid_sheet, df_p in porto_sheets.items():
+                        for _, prow in df_p.iterrows():
+                            stock = str(prow.get('stock_key', '')).strip().upper()
+                            vol   = pd.to_numeric(prow.get('coll_vol', 0), errors='coerce') or 0
+                            if stock and vol > 0:
+                                porto_coll_lookup[(str(cid_sheet).strip(), stock)] = vol
+
+
+             # ── 4e. SHEET SELL (Margin Sell – Repayment PEI) ─────────
+            df_sell_inv = df_inv[
+                (df_inv['bors'] == 'S') &
+                (df_inv['cid_key'].isin(pei_cids)) &
+                (df_inv['Volume_Formula'].abs() > 0)
+            ].copy()
+
+            if 'sid_key' not in df_sell_inv.columns:
+                sell_merged = df_sell_inv.merge(
+                    df_sid[['cid_key', 'sid_key', 'name_key']], on='cid_key', how='left'
+                ).merge(df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m'))
+            else:
+                sell_merged = df_sell_inv.merge(
+                    df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
+                )
+            # Tambahkan ini SEBELUM baris sell_merged.merge(risk_sub...)
+            sell_merged['stock_key'] = sell_merged['stock_key'].astype(str).str.strip().str.upper()
+            risk_sub['stock_key']    = risk_sub['stock_key'].astype(str).str.strip().str.upper()
+
+            sell_merged = sell_merged.merge(risk_sub, on='stock_key', how='left')
+            
+            sell_out = pd.DataFrame()
+            sell_out['SID']          = sell_merged.get('sid_key', '')
+            sell_out['STOCK CODE']   = sell_merged['stock_key']
+            for col in ['REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY',
+                        'AVAILABLE SELL QUANTITY', 'CLOSING PRICE', 'AVAILABLE SELL VALUE']:
+                sell_out[col] = sell_merged[col] if col in sell_merged.columns else 0
+            sell_out['B/S']          = 'S'
+            sell_out['CID']          = sell_merged['cid_key']
+            sell_out['Name']         = sell_merged.get('name_key', '')
+            sell_out['Stock']        = sell_merged['stock_key']
+            sell_out['Volume']       = sell_merged['Volume_Formula'].abs()
+            sell_out['Value']        = sell_merged.apply(
+                lambda r: r.get('AVAILABLE SELL VALUE', r.get('amt_pay', 0))
+                          if r['Volume_Formula'] != 0 else 0,
+                axis=1
+            )
+            # BARU - dari COLLATERAL (VOL) Portofolio Client
+            def get_pei_sell(row):
+                cid   = str(row.get('cid_key', '')).strip()
+                stock = str(row.get('stock_key', '')).strip().upper()
+                vol   = porto_coll_lookup.get((cid, stock), 0)
+                return -vol  # negatif karena Sell = repayment
+
+            sell_out['PEI (Risk/Porto)'] = sell_merged.apply(get_pei_sell, axis=1)
+
+            # Fix nett_sell sesuai logika Excel
+            def nett_sell(row):
+                k = row.get('CLOSING PRICE', '')
+                m = row.get('AVAILABLE SELL VALUE', '')
+                p = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce')
+                s = pd.to_numeric(row['Volume'], errors='coerce')
+
+                if k == '' or m == '': return ''
+                if pd.isna(p) or p == 0: return 'NON MARGIN'
+                if p < 0:
+                    if pd.isna(s) or s == 0: return ''
+                    return 'REPAY PEI' if s < abs(p) else 'ALL STOCK REPAY'
+                return ''
+    
+            sell_out['NETT'] = sell_out.apply(nett_sell, axis=1)
+            
             # ── 4g. SHEET LOAN REQUEST ────────────────────────────────
             # Loan Request = nasabah yang Stock Deposit di Portofolio
             # Hitung Loan Eligible = Collateral Value × (1 - additional_margin)
