@@ -86,7 +86,7 @@ with col_u2:
 
 with col_u3:
     file_m_sell     = st.file_uploader("5. Margin Sell (xlsx)",       type=['xlsx'])
-    file_porto      = st.file_uploader("6. Portofolio Client (xlsx) [Opsional]", type=['xlsx'])
+    file_ep         = st.file_uploader("6. File EP (txt) [Opsional]", type=['txt'])
 
 # ─────────────────────────────────────────────
 # 4. PROSES DATA (hanya jika 5 file wajib ada)
@@ -223,65 +223,44 @@ if all(required_files):
             df_porto_all = pd.DataFrame()
             porto_coll_lookup = {}
 
-            if file_porto is not None:
-                xl_porto = pd.ExcelFile(file_porto)
+            if file_ep is not None:
+                content = file_ep.read().decode('utf-8')
+                current_sid = None
                 porto_rows = []
 
-                for cid_sheet in xl_porto.sheet_names:
-                    cid_str = str(cid_sheet).strip().lstrip('0')  # normalise
-                    df_p = pd.read_excel(xl_porto, sheet_name=cid_sheet)
+                for line in content.strip().splitlines():
+                    parts = line.strip().split('|')
+                    if not parts:
+                        continue
 
-                    # Rename kolom porto
-                    col_map = {
-                        'STOCK': 'stock_key', 'HC': 'haircut_key',
-                        'COLLATERAL (VOL)': 'coll_vol',
-                        'PRICE': 'price_key',
-                        'COLLATERAL (IDR-HC)': 'coll_value'
-                    }
-                    df_p = df_p.rename(columns=col_map)
-                    df_p['cid_sheet'] = cid_sheet
+                    if parts[0] == '0':
+                        current_sid = parts[3].strip() if len(parts) > 3 else None
 
-                    # Enrich dengan nama nasabah dari SID Client
-                    sid_row = df_sid[df_sid['cid_key'].str.lstrip('0') == cid_str]
-                    df_p['CID']  = cid_sheet
-                    df_p['Name'] = sid_row['name_key'].values[0] if len(sid_row) else cid_sheet
+                    elif parts[0] == '1' and current_sid:
+                        stock = parts[3].strip().upper() if len(parts) > 3 else ''
+                        vol   = pd.to_numeric(parts[4], errors='coerce') if len(parts) > 4 else 0
+                        vol   = vol if pd.notna(vol) else 0
 
-                    # Enrich dengan Haircut & Available dari Risk Parameter
-                    df_p = df_p.merge(
-                        risk_sub.rename(columns={'avail_risk': 'risk_avail'}),
-                        on='stock_key', how='left'
-                    )
-
-                    # Hitung Collateral Value (kalau belum ada)
-                    if 'coll_value' not in df_p.columns or df_p['coll_value'].sum() == 0:
-                        df_p['coll_vol']   = pd.to_numeric(df_p.get('coll_vol', 0), errors='coerce').fillna(0)
-                        df_p['price_key']  = pd.to_numeric(df_p.get('price_key', 0), errors='coerce').fillna(0)
-                        hc = pd.to_numeric(df_p.get('haircut_key', 5), errors='coerce').fillna(5) / 100
-                        df_p['coll_value'] = df_p['coll_vol'] * df_p['price_key'] * (1 - hc)
-
-                    porto_sheets[cid_sheet] = df_p
-                    porto_rows.append(df_p)
+                    if stock and vol > 0:
+                        sid_match = df_sid[df_sid['sid_key'].astype(str).str.strip() == current_sid]
+                        if not sid_match.empty:
+                            cid = str(sid_match['cid_key'].values[0]).strip()
+                            porto_coll_lookup[(cid, stock)] = vol
+                            porto_rows.append({
+                                'CID':       cid,
+                                'SID':       current_sid,
+                                'stock_key': stock,
+                                'coll_vol':  vol,
+                            })
 
                 if porto_rows:
-                    df_porto_all = pd.concat(porto_rows, ignore_index=True)
-
-                 # Build lookup hanya kalau porto ada
-                for cid_sheet, df_p in porto_sheets.items():
-                    for _, prow in df_p.iterrows():
-                        stock = str(prow.get('stock_key', '')).strip().upper()
-                        vol   = pd.to_numeric(prow.get('coll_vol', 0), errors='coerce') or 0
-                        if stock and vol > 0:
-                            porto_coll_lookup[(str(cid_sheet).strip(), stock)] = vol
-                
-                # Buat lookup: (cid, stock) → coll_vol dari Portofolio Client
-                porto_coll_lookup = {}
-                if porto_sheets:
-                    for cid_sheet, df_p in porto_sheets.items():
-                        for _, prow in df_p.iterrows():
-                            stock = str(prow.get('stock_key', '')).strip().upper()
-                            vol   = pd.to_numeric(prow.get('coll_vol', 0), errors='coerce') or 0
-                            if stock and vol > 0:
-                                porto_coll_lookup[(str(cid_sheet).strip(), stock)] = vol
+                    df_porto_all = pd.DataFrame(porto_rows)
+                    # Enrich nama dari df_sid
+                    df_porto_all = df_porto_all.merge(
+                        df_sid[['cid_key', 'name_key']].rename(columns={'cid_key': 'CID', 'name_key': 'Name'}),
+                        on='CID', how='left'
+                    )
+                    porto_sheets = dict(tuple(df_porto_all.groupby('CID')))
 
 
              # ── 4e. SHEET SELL (Margin Sell – Repayment PEI) ─────────
