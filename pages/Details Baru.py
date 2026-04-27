@@ -208,13 +208,10 @@ if all(required_files):
 
                 if k == '' or m == '': return ''
                 if pd.isna(p) or p == 0: return ''
-
-                # Cek NON MARGIN
-                # P > 0 → sisi BUY
                 if p > 0:
                     if s < 0: return ''
-                return 'LOAN PEI' if s > p else 'LOAN PARTIAL'
-            return ''
+                    return 'LOAN PEI' if s > p else 'LOAN PARTIAL'
+                return ''
 
             buy_out['NETT'] = buy_out.apply(nett_buy, axis=1)
 
@@ -261,12 +258,7 @@ if all(required_files):
                 s = row['Volume']                  # kolom S
 
                 if k == '' or m == '': return ''
-
-                # Cek NON MARGIN: stock tidak ada di risk parameter
-                # (avail_risk akan 0 atau NaN kalau tidak ketemu di risk_sub merge)
                 if pd.isna(p) or p == 0: return ''
-
-                # P < 0 → sisi SELL
                 if p < 0:
                     if s == 0: return ''
                     return 'REPAY PEI' if s < abs(p) else 'ALL STOCK REPAY'
