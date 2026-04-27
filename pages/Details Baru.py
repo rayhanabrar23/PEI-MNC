@@ -178,6 +178,9 @@ if all(required_files):
                 buy_merged = df_buy_inv.merge(
                     df_mbuy, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
                 )
+            # Sebelum buy_merged.merge(risk_sub...)
+            buy_merged['stock_key'] = buy_merged['stock_key'].astype(str).str.strip().str.upper()
+            risk_sub['stock_key']   = risk_sub['stock_key'].astype(str).str.strip().str.upper()
 
             buy_merged = buy_merged.merge(risk_sub, on='stock_key', how='left')
 
@@ -230,6 +233,9 @@ if all(required_files):
                 sell_merged = df_sell_inv.merge(
                     df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
                 )
+            # Tambahkan ini SEBELUM baris sell_merged.merge(risk_sub...)
+            sell_merged['stock_key'] = sell_merged['stock_key'].astype(str).str.strip().str.upper()
+            risk_sub['stock_key']    = risk_sub['stock_key'].astype(str).str.strip().str.upper()
 
             sell_merged = sell_merged.merge(risk_sub, on='stock_key', how='left')
             
