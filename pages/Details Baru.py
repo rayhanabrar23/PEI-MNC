@@ -201,16 +201,22 @@ if all(required_files):
             buy_out['PEI (Risk/Porto)'] = buy_merged.get('avail_risk', 0)
 
             def nett_buy(row):
-                v = row['Volume']
-                p = row['PEI (Risk/Porto)']
-                if v == 0: return ''
-                try:
-                    return 'LOAN PEI' if float(p) >= float(v) else 'LOAN PARTIAL'
-                except Exception:
-                    return ''
+                k = row.get('CLOSING PRICE', '')
+                m = row.get('AVAILABLE MARKET VALUE', '')
+                p = row['PEI (Risk/Porto)']   # positif
+                s = row['Volume']
+
+                if k == '' or m == '': return ''
+                if pd.isna(p) or p == 0: return ''
+
+                # Cek NON MARGIN
+                # P > 0 → sisi BUY
+                if p > 0:
+                    if s < 0: return ''
+                return 'LOAN PEI' if s > p else 'LOAN PARTIAL'
+            return ''
 
             buy_out['NETT'] = buy_out.apply(nett_buy, axis=1)
-            buy_out = buy_out.fillna('')
 
             # ── 4e. SHEET SELL (Margin Sell – Repayment PEI) ─────────
             df_sell_inv = df_inv[
@@ -244,19 +250,29 @@ if all(required_files):
                           if r['Volume_Formula'] != 0 else 0,
                 axis=1
             )
-            sell_out['PEI (Risk/Porto)'] = 0  # Sell tidak ada risk porto
+            # Sell - PEI (Risk/Porto) diisi negatif dari avail_risk
+            sell_out['PEI (Risk/Porto)'] = sell_merged.get('avail_risk', pd.Series(0, index=sell_merged.index)) * -1
 
+            # Fix nett_sell sesuai logika Excel
             def nett_sell(row):
-                v = row['Volume']
-                sell_qty = row.get('AVAILABLE SELL QUANTITY', 0)
-                if v == 0: return ''
-                try:
-                    return 'ALL STOCK REPAY' if float(sell_qty) <= 0 else 'REPAY PEI'
-                except Exception:
-                    return ''
+                k = row.get('CLOSING PRICE', '')   # kolom K
+                m = row.get('AVAILABLE SELL VALUE', '')  # kolom M
+                p = row['PEI (Risk/Porto)']        # negatif
+                s = row['Volume']                  # kolom S
 
-            sell_out['NETT']         = sell_out.apply(nett_sell, axis=1)
-            sell_out = sell_out.fillna('')
+                if k == '' or m == '': return ''
+
+                # Cek NON MARGIN: stock tidak ada di risk parameter
+                # (avail_risk akan 0 atau NaN kalau tidak ketemu di risk_sub merge)
+                if pd.isna(p) or p == 0: return ''
+
+                # P < 0 → sisi SELL
+                if p < 0:
+                    if s == 0: return ''
+                    return 'REPAY PEI' if s < abs(p) else 'ALL STOCK REPAY'
+                return ''
+    
+            sell_out['NETT'] = sell_out.apply(nett_sell, axis=1)
 
             # ── 4f. SHEET PORTOFOLIO KOLATERAL ───────────────────────
             porto_sheets = {}
