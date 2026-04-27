@@ -7,7 +7,7 @@ from datetime import datetime
 # PAGE CONFIG
 # ─────────────────────────────────────────────
 st.set_page_config(
-    page_title="Validasi MNC",
+    page_title="Validasi Input LR & RP",
     page_icon="✅",
     layout="wide",
 )
