@@ -109,7 +109,7 @@ with col_u2:
 
 with col_u3:
     file_m_sell = st.file_uploader("5. Margin Sell (.txt)",    type=['txt'])
-    file_ep     = st.file_uploader("6. File OP (.txt)",        type=['txt'])
+    file_ep     = st.file_uploader("6. Outstanding Position (.txt)",        type=['txt'])
 
 # ─────────────────────────────────────────────
 # 4. PROSES DATA
@@ -499,7 +499,7 @@ if all(required_files):
         st.exception(e)
 
 else:
-    st.warning("⬆️ Upload 6 file wajib (Netting Invoice, SID Client, Risk Parameter, Margin Buy, Margin Sell, OP) untuk memulai.")
+    st.warning("⬆️ Upload 6 file wajib (Netting Invoice, SID Client, Risk Parameter, Margin Buy, Margin Sell, Outstanding Position) untuk memulai.")
 
     with st.expander("📖 Panduan Struktur File"):
         st.markdown("""
