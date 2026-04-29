@@ -11,6 +11,12 @@ st.set_page_config(
     page_icon="✅",
     layout="wide",
 )
+st.info(
+    "Sistem ini memproses transaksi nasabah PEI: "
+    "**Buy (Loan)** · **Sell (Repayment)** · "
+    "**Repayment Proceed** · **Loan Request**"
+)
+
 
 # ─────────────────────────────────────────────
 # CUSTOM CSS — Light Theme
