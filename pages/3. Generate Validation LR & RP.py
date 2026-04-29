@@ -473,7 +473,6 @@ def generate_revisi_repayment_excel(df_sell, sid_results, op_data):
         if data.get("has_repayment") and not lolos_repayment(data)
     ]
 
-    # Sheet 1 — Ringkasan alasan gagal per check
     alasan_rows = []
     for sid in failed_sids:
         data = sid_results[sid]
@@ -490,7 +489,6 @@ def generate_revisi_repayment_excel(df_sell, sid_results, op_data):
                     "Volume Existing" : op.get("volume_existing", "-"),
                 })
 
-    # Sheet 2 — Data transaksi sell nasabah gagal (bisa diedit & upload ulang)
     df_failed_sell = df_sell[
         col(df_sell, SELL_SID).astype(str).isin([str(s) for s in failed_sids])
     ].copy()
@@ -510,7 +508,6 @@ def generate_revisi_loan_excel(df_buy, sid_results, op_data, cl_data):
         if data.get("has_loan_request") and not lolos_loan(data)
     ]
 
-    # Sheet 1 — Ringkasan alasan gagal per check
     alasan_rows = []
     for sid in failed_sids:
         data = sid_results[sid]
@@ -528,7 +525,6 @@ def generate_revisi_loan_excel(df_buy, sid_results, op_data, cl_data):
                     "Available Limit" : cl.get("available_limit", "-"),
                 })
 
-    # Sheet 2 — Data transaksi buy nasabah gagal (bisa diedit & upload ulang)
     df_failed_buy = df_buy[
         col(df_buy, BUY_SID).astype(str).isin([str(s) for s in failed_sids])
     ].copy()
@@ -539,6 +535,12 @@ def generate_revisi_loan_excel(df_buy, sid_results, op_data, cl_data):
         df_failed_buy.to_excel(            writer, sheet_name="Buy (Loan)",   index=False)
     buf.seek(0)
     return buf, f"Revisi Loan Request {today_str}.xlsx", len(failed_sids)
+
+# ─────────────────────────────────────────────
+# CREDIT LIMIT PARTISIPAN — HARDCODED
+# ─────────────────────────────────────────────
+
+CREDIT_LIMIT_PARTISIPAN = 148_000_000_000.0
 
 # ─────────────────────────────────────────────
 # UI — UPLOAD
@@ -610,16 +612,9 @@ if op_file or cl_file:
 
     st.divider()
 
-# ── Credit Limit Partisipan ───────────────────────────────────────────
+# ── Credit Limit Partisipan — Info ───────────────────────────────────
 st.subheader("Credit Limit Partisipan")
-credit_limit_partisipan = st.number_input(
-    "Masukkan nilai Credit Limit Partisipan (Rp)",
-    min_value=0.0,
-    value=0.0,
-    step=1_000_000.0,
-    format="%.2f",
-    help="Input manual Credit Limit Partisipan untuk validasi global (check 4)"
-)
+st.info(f"Credit Limit Partisipan ditetapkan: **{fmt_rp(CREDIT_LIMIT_PARTISIPAN)}**")
 
 st.divider()
 
@@ -688,7 +683,7 @@ if run_btn:
             st.stop()
 
         sid_results, global_result = run_validations(
-            df_sell, df_buy, op_data, cl_data, credit_limit_partisipan
+            df_sell, df_buy, op_data, cl_data, CREDIT_LIMIT_PARTISIPAN
         )
 
     st.success("✅ Validasi Selesai!")
