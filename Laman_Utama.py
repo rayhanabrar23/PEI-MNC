@@ -5,15 +5,13 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;600;700&display=swap');
 
-    /* ── Sembunyikan SEMUA elemen toolbar/header Streamlit ── */
-    header[data-testid="stHeader"]         { display: none !important; }
-    [data-testid="stToolbar"]              { display: none !important; }
-    [data-testid="stDecoration"]           { display: none !important; }
-    [data-testid="stMainBlockContainer"] > div:first-child { padding-top: 0 !important; }
-    #MainMenu                              { display: none !important; }
-    footer                                 { display: none !important; }
+    /* ── Sembunyikan HANYA toolbar atas (keyboard_double_arrow, Share, dll) ── */
+    [data-testid="stToolbar"]    { display: none !important; }
+    [data-testid="stDecoration"] { display: none !important; }
+    #MainMenu                    { display: none !important; }
+    footer                       { display: none !important; }
 
-    /* ── Sidebar ── */
+    /* ── Sidebar tetap normal ── */
     [data-testid="stSidebar"] {
         background-color: #ffffff !important;
         border-right: 1px solid #e8e0db !important;
@@ -28,9 +26,9 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* ── Block container flush ── */
+    /* ── Kurangi padding atas konten agar tidak ada gap besar ── */
     .block-container {
-        padding-top: 0 !important;
+        padding-top: 1rem !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
         max-width: 100% !important;
@@ -139,9 +137,7 @@ components.html("""
   }
 
   /* ── Main content ── */
-  .content {
-    padding: 40px 48px 40px;
-  }
+  .content { padding: 36px 48px 40px; }
 
   .eyebrow {
     display: flex;
@@ -164,7 +160,7 @@ components.html("""
   }
 
   .hero-title {
-    font-size: 56px;
+    font-size: 54px;
     font-weight: 700;
     color: var(--text);
     line-height: 1.0;
@@ -178,16 +174,16 @@ components.html("""
     height: 3px;
     background: var(--red);
     border-radius: 2px;
-    margin: 18px 0 16px;
+    margin: 16px 0 14px;
   }
 
   .hero-sub {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 300;
     color: var(--muted);
     line-height: 1.65;
     max-width: 520px;
-    margin-bottom: 36px;
+    margin-bottom: 32px;
   }
 
   .section-label {
@@ -196,21 +192,21 @@ components.html("""
     color: var(--subtle);
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    margin-bottom: 14px;
+    margin-bottom: 12px;
   }
 
   .menu-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 14px;
-    margin-bottom: 28px;
+    gap: 12px;
+    margin-bottom: 24px;
   }
   .menu-card {
     background: var(--white);
     border: 0.5px solid var(--border);
     border-left: 3px solid var(--red);
     border-radius: 10px;
-    padding: 20px 24px;
+    padding: 18px 22px;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     cursor: default;
   }
@@ -224,7 +220,7 @@ components.html("""
     color: var(--red);
     letter-spacing: 0.1em;
     opacity: 0.6;
-    margin-bottom: 7px;
+    margin-bottom: 6px;
   }
   .menu-title {
     font-size: 14px;
@@ -232,10 +228,10 @@ components.html("""
     color: var(--text);
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    margin-bottom: 6px;
+    margin-bottom: 5px;
   }
   .menu-desc {
-    font-size: 13px;
+    font-size: 12.5px;
     font-weight: 300;
     color: #7a5a5a;
     line-height: 1.5;
@@ -246,7 +242,7 @@ components.html("""
     border: 0.5px solid var(--red-border);
     border-left: 3px solid var(--red);
     border-radius: 0 8px 8px 0;
-    padding: 13px 18px;
+    padding: 12px 16px;
     font-size: 13px;
     color: #3a1010;
     line-height: 1.6;
@@ -259,12 +255,12 @@ components.html("""
   }
   .mini-topbar   { animation: fadeUp 0.3s ease both 0.00s; }
   .eyebrow       { animation: fadeUp 0.3s ease both 0.08s; }
-  .hero-title    { animation: fadeUp 0.3s ease both 0.14s; }
-  .hero-divider  { animation: fadeUp 0.3s ease both 0.18s; }
-  .hero-sub      { animation: fadeUp 0.3s ease both 0.22s; }
-  .section-label { animation: fadeUp 0.3s ease both 0.26s; }
-  .menu-grid     { animation: fadeUp 0.3s ease both 0.30s; }
-  .info-banner   { animation: fadeUp 0.3s ease both 0.36s; }
+  .hero-title    { animation: fadeUp 0.3s ease both 0.13s; }
+  .hero-divider  { animation: fadeUp 0.3s ease both 0.17s; }
+  .hero-sub      { animation: fadeUp 0.3s ease both 0.21s; }
+  .section-label { animation: fadeUp 0.3s ease both 0.25s; }
+  .menu-grid     { animation: fadeUp 0.3s ease both 0.29s; }
+  .info-banner   { animation: fadeUp 0.3s ease both 0.34s; }
 </style>
 </head>
 <body>
@@ -285,7 +281,6 @@ components.html("""
 </div>
 
 <div class="content">
-
   <div class="eyebrow">PEI I-Fast Converter</div>
 
   <div class="hero-title">
@@ -328,8 +323,8 @@ components.html("""
     <strong>Cara menggunakan:</strong>
     Pilih menu di sidebar kiri untuk mulai mengolah data Anda.
   </div>
-
 </div>
+
 </body>
 </html>
-""", height=680, scrolling=False)
+""", height=660, scrolling=False)
