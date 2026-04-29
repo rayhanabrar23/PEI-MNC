@@ -16,7 +16,7 @@ if uploaded_file:
         # Load data
         df = pd.read_csv(uploaded_file, dtype={'no_cust': str, 'no_share': str, 'bors': str})
         
-        # --- VALIDASI KOLOM (Mencegah error 'bors' jika salah upload file) ---
+        # --- VALIDASI KOLOM ---
         required_columns = ['no_cust', 'no_share', 'bors', 'amt_pay', 'tot_vol']
         missing_cols = [col for col in required_columns if col not in df.columns]
         
@@ -63,20 +63,37 @@ if uploaded_file:
 
         # --- OUTPUT & DOWNLOAD ---
         st.success("✅ Data Invoice Berhasil Diproses!")
-        
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
+
+        # Buffer 1: Complete (4 sheet)
+        output_complete = io.BytesIO()
+        with pd.ExcelWriter(output_complete, engine='openpyxl') as writer:
             stock_detail_bs.to_excel(writer, index=False, sheet_name='Detail_BS_per_Saham')
             client_final_net.to_excel(writer, index=False, sheet_name='Total_per_Client')
             sheet3_final.to_excel(writer, index=False, sheet_name='Netting_Volume')
             net_emiten.to_excel(writer, index=False, sheet_name='Netting_per_Saham')
-        
-        st.download_button(
-            label="📥 Download Netting Complete Version.xlsx",
-            data=output.getvalue(),
-            file_name="MNCN_Netting_Complete.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
+
+        # Buffer 2: Khusus Sheet 3 saja
+        output_netting_vol = io.BytesIO()
+        with pd.ExcelWriter(output_netting_vol, engine='openpyxl') as writer:
+            sheet3_final.to_excel(writer, index=False, sheet_name='Netting_Volume')
+
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            st.download_button(
+                label="📥 Download Netting Complete Version.xlsx",
+                data=output_complete.getvalue(),
+                file_name="MNCN_Netting_Complete.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        with dl_col2:
+            st.download_button(
+                label="📥 Download Netting Volume Only.xlsx",
+                data=output_netting_vol.getvalue(),
+                file_name="MNCN_Netting_Volume.xlsx",
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
 
         st.divider()
         
@@ -87,7 +104,6 @@ if uploaded_file:
 
         with col1:
             st.subheader("Total Buy & Sell")
-            # Formatting preview
             s3_display = sheet3_final.copy()
             for col in ['tot_vol', 'Volume_Formula', 'amt_pay']:
                 s3_display[col] = s3_display[col].map('{:,.2f}'.format)
@@ -95,7 +111,6 @@ if uploaded_file:
 
         with col2:
             st.subheader("Netting Stock & Cash")
-            # Formatting preview
             net_display = net_emiten.copy()
             for col in ['Net_Volume_Stock', 'Net_Amount_IDR']:
                 net_display[col] = net_display[col].map('{:,.2f}'.format)
