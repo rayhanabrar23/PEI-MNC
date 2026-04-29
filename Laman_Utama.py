@@ -5,7 +5,6 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;600;700&display=swap');
 
-    /* Sidebar styling */
     [data-testid="stSidebar"] {
         background-color: #ffffff !important;
         border-right: 1px solid #e8e0db !important;
@@ -13,11 +12,6 @@ st.markdown("""
     [data-testid="stSidebar"] * {
         font-family: 'Roboto Condensed', sans-serif !important;
     }
-    [data-testid="stSidebar"] .stMarkdown p {
-        font-size: 14px !important;
-        color: #3a2020 !important;
-    }
-    /* Active nav item warna merah */
     [data-testid="stSidebarNavLink"][aria-current="page"] {
         background-color: #fff0f2 !important;
         color: #D90020 !important;
@@ -25,15 +19,13 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
-    /* Hapus padding atas konten utama */
     .block-container {
-        padding-top: 1rem !important;
-        padding-left: 1.5rem !important;
-        padding-right: 1.5rem !important;
+        padding-top: 0 !important;
+        padding-left: 0 !important;
+        padding-right: 0 !important;
         max-width: 100% !important;
     }
 
-    /* Sembunyikan header bawaan Streamlit */
     header[data-testid="stHeader"] {
         background: transparent !important;
         height: 0 !important;
@@ -68,7 +60,85 @@ components.html("""
     font-family: 'Roboto Condensed', sans-serif;
     background: transparent;
     color: var(--text);
-    padding: 32px 8px 32px 4px;
+    padding: 0;
+    margin: 0;
+  }
+
+  /* ── Mini topbar strip (inline, bukan header) ── */
+  .mini-topbar {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 14px 48px;
+    background: var(--white);
+    border-bottom: 0.5px solid var(--border);
+    margin-bottom: 0;
+  }
+  .mini-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  .logo-box {
+    width: 28px;
+    height: 28px;
+    background: var(--red);
+    border-radius: 5px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .logo-box svg { width: 15px; height: 15px; fill: #fff; }
+  .brand-name {
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+  .brand-divider {
+    width: 1px;
+    height: 14px;
+    background: var(--border);
+    margin: 0 2px;
+  }
+  .brand-sub {
+    font-size: 12px;
+    font-weight: 400;
+    color: var(--subtle);
+  }
+  .user-chip {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    background: var(--red-light);
+    border: 0.5px solid var(--red-border);
+    border-radius: 20px;
+    padding: 4px 12px 4px 4px;
+  }
+  .user-avatar {
+    width: 24px;
+    height: 24px;
+    background: var(--red);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 10px;
+    font-weight: 700;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .user-name {
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--red);
+  }
+
+  /* ── Main content ── */
+  .content {
+    padding: 40px 48px 40px;
   }
 
   /* ── Eyebrow ── */
@@ -92,7 +162,7 @@ components.html("""
     flex-shrink: 0;
   }
 
-  /* ── Hero title ── */
+  /* ── Hero ── */
   .hero-title {
     font-size: 56px;
     font-weight: 700;
@@ -116,7 +186,7 @@ components.html("""
     font-weight: 300;
     color: var(--muted);
     line-height: 1.65;
-    max-width: 480px;
+    max-width: 520px;
     margin-bottom: 36px;
   }
 
@@ -127,23 +197,22 @@ components.html("""
     color: var(--subtle);
     text-transform: uppercase;
     letter-spacing: 0.12em;
-    margin-bottom: 12px;
+    margin-bottom: 14px;
   }
 
-  /* ── Menu cards ── */
+  /* ── Menu cards — full width 2 col ── */
   .menu-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 12px;
+    gap: 14px;
     margin-bottom: 28px;
-    max-width: 740px;
   }
   .menu-card {
     background: var(--white);
     border: 0.5px solid var(--border);
     border-left: 3px solid var(--red);
     border-radius: 10px;
-    padding: 18px 20px;
+    padding: 20px 24px;
     transition: transform 0.15s ease, box-shadow 0.15s ease;
     cursor: default;
   }
@@ -165,10 +234,10 @@ components.html("""
     color: var(--text);
     text-transform: uppercase;
     letter-spacing: 0.03em;
-    margin-bottom: 5px;
+    margin-bottom: 6px;
   }
   .menu-desc {
-    font-size: 12.5px;
+    font-size: 13px;
     font-weight: 300;
     color: #7a5a5a;
     line-height: 1.5;
@@ -176,12 +245,11 @@ components.html("""
 
   /* ── Info banner ── */
   .info-banner {
-    max-width: 740px;
     background: var(--red-light);
     border: 0.5px solid var(--red-border);
     border-left: 3px solid var(--red);
     border-radius: 0 8px 8px 0;
-    padding: 13px 16px;
+    padding: 13px 18px;
     font-size: 13px;
     color: #3a1010;
     line-height: 1.6;
@@ -190,19 +258,39 @@ components.html("""
 
   /* ── Animations ── */
   @keyframes fadeUp {
-    from { opacity: 0; transform: translateY(14px); }
+    from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .eyebrow     { animation: fadeUp 0.35s ease both 0.05s; }
-  .hero-title  { animation: fadeUp 0.35s ease both 0.12s; }
-  .hero-divider{ animation: fadeUp 0.35s ease both 0.17s; }
-  .hero-sub    { animation: fadeUp 0.35s ease both 0.22s; }
-  .section-label{ animation: fadeUp 0.35s ease both 0.27s; }
-  .menu-grid   { animation: fadeUp 0.35s ease both 0.31s; }
-  .info-banner { animation: fadeUp 0.35s ease both 0.37s; }
+  .mini-topbar  { animation: fadeUp 0.3s ease both 0.0s; }
+  .eyebrow      { animation: fadeUp 0.3s ease both 0.08s; }
+  .hero-title   { animation: fadeUp 0.3s ease both 0.14s; }
+  .hero-divider { animation: fadeUp 0.3s ease both 0.18s; }
+  .hero-sub     { animation: fadeUp 0.3s ease both 0.22s; }
+  .section-label{ animation: fadeUp 0.3s ease both 0.26s; }
+  .menu-grid    { animation: fadeUp 0.3s ease both 0.30s; }
+  .info-banner  { animation: fadeUp 0.3s ease both 0.36s; }
 </style>
 </head>
 <body>
+
+<!-- Mini topbar inline (bukan Streamlit header) -->
+<div class="mini-topbar">
+  <div class="mini-left">
+    <div class="logo-box">
+      <svg viewBox="0 0 24 24"><path d="M3 3h7v7H3zm11 0h7v7h-7zM3 14h7v7H3zm14 3h-3v-3h3v3zm0 4h-3v-3h3v3zm4-4h-3v-3h3v3zm0 4h-3v-3h3v3z"/></svg>
+    </div>
+    <span class="brand-name">I-Fast Converter</span>
+    <div class="brand-divider"></div>
+    <span class="brand-sub">MNC Sekuritas</span>
+  </div>
+  <div class="user-chip">
+    <div class="user-avatar">MN</div>
+    <span class="user-name">MNC Sekuritas</span>
+  </div>
+</div>
+
+<!-- Konten utama -->
+<div class="content">
 
   <div class="eyebrow">PEI I-Fast Converter</div>
 
@@ -247,6 +335,7 @@ components.html("""
     Pilih menu di sidebar kiri untuk mulai mengolah data Anda.
   </div>
 
+</div>
 </body>
 </html>
-""", height=620, scrolling=False)
+""", height=680, scrolling=False)
