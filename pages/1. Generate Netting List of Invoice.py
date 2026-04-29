@@ -3,7 +3,7 @@ import pandas as pd
 import io
 
 # 1. Konfigurasi Halaman
-st.set_page_config(page_title="MNCN - Invoice Netting", layout="wide")
+st.set_page_config(page_title="MNC - Invoice Netting", layout="wide")
 
 st.title("📑 List of Invoice Netting")
 st.info("Halaman ini memproses data Invoice. Pastikan file CSV memiliki kolom: no_cust, no_share, bors, amt_pay, dan tot_vol.")
