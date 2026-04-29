@@ -533,7 +533,7 @@ if op_file or cl_file:
     st.divider()
 
 # ── Credit Limit Partisipan ───────────────────────────────────────────
-st.subheader("💼 Credit Limit Partisipan")
+st.subheader("Credit Limit Partisipan")
 credit_limit_partisipan = st.number_input(
     "Masukkan nilai Credit Limit Partisipan (Rp)",
     min_value=0.0,
