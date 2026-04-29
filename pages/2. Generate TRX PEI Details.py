@@ -516,14 +516,14 @@ else:
     # Panduan struktur file
     with st.expander("📖 Panduan Struktur File"):
         st.markdown("""
-        | # | File | Kolom Wajib |
+        | # | File | Sumber File |
         |---|------|-------------|
-        | 1 | **Netting Invoice** | `no_cust`, `no_share`, `bors`, `tot_vol`, `Volume_Formula`, `amt_pay` |
-        | 2 | **SID Client** | `SID`, `CID`, `Name` |
-        | 3 | **Risk Parameter** | `Stock Code`, `Stock Name`, `Haircut`, `Available Quantity` |
-        | 4 | **Margin Buy** | `SID`, `STOCK CODE`, `MARGIN BUY QUANTITY`, `LOAN QUANTITY`, `AVAILABLE QUANTITY`, `CLOSING PRICE`, `AVAILABLE MARKET VALUE`, `HAIRCUT`, `AVAILABLE COLLATERAL VALUE` |
-        | 5 | **Margin Sell** | `SID`, `STOCK CODE`, `REGULAR SELL QUANTITY`, `REPAYMENT QUANTITY`, `AVAILABLE SELL QUANTITY`, `CLOSING PRICE`, `AVAILABLE SELL VALUE` |
-        | 6 | **Outstanding Position** | file txt tanpa diubah strukturnya |
+        | 1 | **Netting Invoice** | `Hasil generate Netting List of Invoice dari data mentah List of Invoice` |
+        | 2 | **SID Client** | `Template excel yang berisi kolom SID, CID, Name` |
+        | 3 | **Risk Parameter** | `File .txt yang diunduh pada menu Report melalui I-Fast Web` |
+        | 4 | **Margin Buy** | `File .txt yang diunduh pada menu Daily Transaction melalui I-Fast Web` |
+        | 5 | **Margin Sell** | `File .txt yang diunduh pada menu Daily Transaction melalui I-Fast Web` |
+        | 6 | **Outstanding Position** | file .txt yang diunduh melalui I-Fast Web' |
         
         > **Outstanding Position (OP)** dipakai untuk menentukan nilai portofolio client.
         """)
