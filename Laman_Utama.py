@@ -5,6 +5,15 @@ st.markdown("""
     <style>
     @import url('https://fonts.googleapis.com/css2?family=Roboto+Condensed:wght@300;400;600;700&display=swap');
 
+    /* ── Sembunyikan SEMUA elemen toolbar/header Streamlit ── */
+    header[data-testid="stHeader"]         { display: none !important; }
+    [data-testid="stToolbar"]              { display: none !important; }
+    [data-testid="stDecoration"]           { display: none !important; }
+    [data-testid="stMainBlockContainer"] > div:first-child { padding-top: 0 !important; }
+    #MainMenu                              { display: none !important; }
+    footer                                 { display: none !important; }
+
+    /* ── Sidebar ── */
     [data-testid="stSidebar"] {
         background-color: #ffffff !important;
         border-right: 1px solid #e8e0db !important;
@@ -19,18 +28,13 @@ st.markdown("""
         font-weight: 700 !important;
     }
 
+    /* ── Block container flush ── */
     .block-container {
         padding-top: 0 !important;
         padding-left: 0 !important;
         padding-right: 0 !important;
         max-width: 100% !important;
     }
-
-    header[data-testid="stHeader"] {
-        background: transparent !important;
-        height: 0 !important;
-    }
-    #MainMenu, footer { visibility: hidden; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -48,7 +52,6 @@ components.html("""
     --red-dark:   #b0001a;
     --red-light:  #fff0f2;
     --red-border: #f5c0c8;
-    --bg:         #f8f5f3;
     --white:      #ffffff;
     --text:       #1a0a0f;
     --muted:      #5a4040;
@@ -64,15 +67,14 @@ components.html("""
     margin: 0;
   }
 
-  /* ── Mini topbar strip (inline, bukan header) ── */
+  /* ── Mini topbar inline ── */
   .mini-topbar {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 48px;
+    padding: 13px 48px;
     background: var(--white);
     border-bottom: 0.5px solid var(--border);
-    margin-bottom: 0;
   }
   .mini-left {
     display: flex;
@@ -141,7 +143,6 @@ components.html("""
     padding: 40px 48px 40px;
   }
 
-  /* ── Eyebrow ── */
   .eyebrow {
     display: flex;
     align-items: center;
@@ -162,7 +163,6 @@ components.html("""
     flex-shrink: 0;
   }
 
-  /* ── Hero ── */
   .hero-title {
     font-size: 56px;
     font-weight: 700;
@@ -190,7 +190,6 @@ components.html("""
     margin-bottom: 36px;
   }
 
-  /* ── Section label ── */
   .section-label {
     font-size: 10px;
     font-weight: 700;
@@ -200,7 +199,6 @@ components.html("""
     margin-bottom: 14px;
   }
 
-  /* ── Menu cards — full width 2 col ── */
   .menu-grid {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
@@ -243,7 +241,6 @@ components.html("""
     line-height: 1.5;
   }
 
-  /* ── Info banner ── */
   .info-banner {
     background: var(--red-light);
     border: 0.5px solid var(--red-border);
@@ -256,24 +253,22 @@ components.html("""
   }
   .info-banner strong { font-weight: 700; }
 
-  /* ── Animations ── */
   @keyframes fadeUp {
     from { opacity: 0; transform: translateY(12px); }
     to   { opacity: 1; transform: translateY(0); }
   }
-  .mini-topbar  { animation: fadeUp 0.3s ease both 0.0s; }
-  .eyebrow      { animation: fadeUp 0.3s ease both 0.08s; }
-  .hero-title   { animation: fadeUp 0.3s ease both 0.14s; }
-  .hero-divider { animation: fadeUp 0.3s ease both 0.18s; }
-  .hero-sub     { animation: fadeUp 0.3s ease both 0.22s; }
-  .section-label{ animation: fadeUp 0.3s ease both 0.26s; }
-  .menu-grid    { animation: fadeUp 0.3s ease both 0.30s; }
-  .info-banner  { animation: fadeUp 0.3s ease both 0.36s; }
+  .mini-topbar   { animation: fadeUp 0.3s ease both 0.00s; }
+  .eyebrow       { animation: fadeUp 0.3s ease both 0.08s; }
+  .hero-title    { animation: fadeUp 0.3s ease both 0.14s; }
+  .hero-divider  { animation: fadeUp 0.3s ease both 0.18s; }
+  .hero-sub      { animation: fadeUp 0.3s ease both 0.22s; }
+  .section-label { animation: fadeUp 0.3s ease both 0.26s; }
+  .menu-grid     { animation: fadeUp 0.3s ease both 0.30s; }
+  .info-banner   { animation: fadeUp 0.3s ease both 0.36s; }
 </style>
 </head>
 <body>
 
-<!-- Mini topbar inline (bukan Streamlit header) -->
 <div class="mini-topbar">
   <div class="mini-left">
     <div class="logo-box">
@@ -289,7 +284,6 @@ components.html("""
   </div>
 </div>
 
-<!-- Konten utama -->
 <div class="content">
 
   <div class="eyebrow">PEI I-Fast Converter</div>
