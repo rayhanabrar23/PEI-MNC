@@ -12,112 +12,11 @@ st.set_page_config(
     layout="wide",
 )
 
-# ─────────────────────────────────────────────
-# CUSTOM CSS — Light Theme
-# ─────────────────────────────────────────────
-st.markdown("""
-<style>
-@import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
-
-html, body, [class*="css"] {
-    font-family: 'IBM Plex Sans', sans-serif;
-}
-.stApp {
-    background-color: #f5f7fa;
-    color: #1a1f2e;
-}
-h1, h2, h3 {
-    font-family: 'IBM Plex Mono', monospace;
-    color: #1a5fe8;
-}
-.stButton > button {
-    background: #1a5fe8;
-    color: white;
-    border: none;
-    border-radius: 6px;
-    font-family: 'IBM Plex Mono', monospace;
-    font-weight: 600;
-    padding: 0.5rem 1.5rem;
-    transition: background 0.2s;
-}
-.stButton > button:hover {
-    background: #3a7af0;
-}
-.validation-box {
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    margin: 0.5rem 0;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.85rem;
-}
-.pass  { background:#e8f8ed; border-left:4px solid #22a84a; color:#166332; }
-.fail  { background:#fdecea; border-left:4px solid #e53935; color:#b71c1c; }
-.warn  { background:#fff8e1; border-left:4px solid #f9a825; color:#7a5700; }
-.section-header {
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.75rem;
-    letter-spacing: 0.15em;
-    text-transform: uppercase;
-    color: #5a6278;
-    margin: 1.5rem 0 0.5rem 0;
-    border-bottom: 1px solid #d0d7e3;
-    padding-bottom: 0.3rem;
-}
-.metric-card {
-    background: #ffffff;
-    border: 1px solid #d0d7e3;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    text-align: center;
-    box-shadow: 0 1px 4px rgba(0,0,0,0.06);
-}
-.metric-label {
-    font-size: 0.7rem;
-    color: #5a6278;
-    font-family: 'IBM Plex Mono', monospace;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-}
-.metric-value {
-    font-size: 1.4rem;
-    font-weight: 600;
-    font-family: 'IBM Plex Mono', monospace;
-}
-.preview-box {
-    background: #ffffff;
-    border: 1px solid #d0d7e3;
-    border-radius: 8px;
-    padding: 0.75rem 1rem;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: #1a1f2e;
-    margin-top: 0.5rem;
-}
-.preview-label {
-    font-size: 0.68rem;
-    color: #5a6278;
-    text-transform: uppercase;
-    letter-spacing: 0.1em;
-    margin-bottom: 0.4rem;
-}
-.date-warn {
-    background: #fff8e1;
-    border: 1px solid #f9a825;
-    border-radius: 6px;
-    padding: 0.5rem 1rem;
-    font-family: 'IBM Plex Mono', monospace;
-    font-size: 0.78rem;
-    color: #7a5700;
-    margin-top: 0.4rem;
-}
-.stDataFrame { background: #ffffff; }
-[data-testid="stExpander"] {
-    background: #ffffff;
-    border: 1px solid #d0d7e3;
-    border-radius: 8px;
-}
-</style>
-""", unsafe_allow_html=True)
+st.title("✅ Validasi MNC")
+st.info(
+    "Sistem Validasi Repayment & Loan Request nasabah PEI: "
+    "**Repayment Proceed** · **Loan Request** · **Credit Limit**"
+)
 
 # ─────────────────────────────────────────────
 # HELPERS
@@ -135,27 +34,10 @@ def fmt_pct(val):
     except Exception:
         return str(val)
 
-def pass_box(msg):
-    st.markdown(f'<div class="validation-box pass">✅ {msg}</div>', unsafe_allow_html=True)
-
-def fail_box(msg):
-    st.markdown(f'<div class="validation-box fail">❌ {msg}</div>', unsafe_allow_html=True)
-
-def warn_box(msg):
-    st.markdown(f'<div class="validation-box warn">⚠️ {msg}</div>', unsafe_allow_html=True)
-
-def section(title):
-    st.markdown(f'<div class="section-header">{title}</div>', unsafe_allow_html=True)
-
 def parse_hc(raw):
-    """
-    Konversi nilai Haircut ke desimal (0–1).
-    Menerima: '18%', '0.18', '18', 18.0, dll.
-    """
     try:
         s = str(raw).replace("%", "").strip()
         v = float(s)
-        # Jika nilainya > 1, asumsikan dalam bentuk persen (mis. 18 → 0.18)
         return v / 100 if v > 1 else v
     except Exception:
         return 0.0
@@ -165,16 +47,6 @@ def parse_hc(raw):
 # ─────────────────────────────────────────────
 
 def parse_op_file(content: str):
-    """
-    Parse OP txt file.
-    Format baris '0': header nasabah
-        0|YYYYMMDD|BrokerCode|SID|Name|LoanExisting|AccruedInterest|...|HC%|...|...
-    Format baris '1': detail saham per nasabah
-        1|BrokerCode|SID|StockCode|Volume
-
-    Returns dict keyed by SID:
-        loan_existing, accrued_interest, volume_existing (sum lot seluruh saham), name
-    """
     result = {}
     lines = content.strip().splitlines()
     for line in lines:
@@ -183,7 +55,6 @@ def parse_op_file(content: str):
             continue
         parts = line.split("|")
         if parts[0] == "0":
-            # Minimal 7 kolom: 0|date|broker|SID|name|loan|accrued
             if len(parts) < 7:
                 continue
             sid = parts[3].strip()
@@ -200,11 +71,9 @@ def parse_op_file(content: str):
                 "accrued_interest": accrued_interest,
                 "volume_existing":  0.0,
                 "name":             parts[4].strip() if len(parts) > 4 else sid,
-                # Simpan detail saham untuk collateral akurat (diisi dari baris '1')
                 "stocks": {},
             }
         elif parts[0] == "1":
-            # Format: 1|BrokerCode|SID|StockCode|Volume
             if len(parts) < 5:
                 continue
             sid   = parts[2].strip()
@@ -220,14 +89,6 @@ def parse_op_file(content: str):
 
 
 def parse_credit_limit_file(content: str):
-    """
-    Parse CreditLimit txt file.
-    Format: Value Date|Broker Code|SID|Client Name|Client Credit Limit|Used Limit|Available Limit
-
-    Returns:
-        dict keyed by SID: {available_limit, name, value_date}
-        str value_date (dari baris pertama data)
-    """
     result     = {}
     value_date = None
     lines      = content.strip().splitlines()
@@ -238,7 +99,6 @@ def parse_credit_limit_file(content: str):
             continue
         parts = line.split("|")
 
-        # Skip header baris pertama
         if i == 0 and parts[0].strip().lower() == "value date":
             continue
 
@@ -251,7 +111,6 @@ def parse_credit_limit_file(content: str):
         except Exception:
             available_limit = 0.0
 
-        # Ambil value_date dari baris data pertama
         if value_date is None:
             value_date = parts[0].strip()
 
@@ -265,59 +124,44 @@ def parse_credit_limit_file(content: str):
 
 
 def load_hasil_mnc(uploaded_file):
-    """Load Hasil_MNC excel. Returns (df_sell, df_buy)."""
-    xls    = pd.ExcelFile(uploaded_file)
+    xls     = pd.ExcelFile(uploaded_file)
     df_sell = pd.read_excel(xls, sheet_name="Sell (Repayment)", header=0)
-    df_buy  = pd.read_excel(xls, sheet_name="Buy (Loan)",  header=0)
+    df_buy  = pd.read_excel(xls, sheet_name="Buy (Loan)",       header=0)
     return df_sell, df_buy
 
 # ─────────────────────────────────────────────
-# COLUMN ACCESSORS (by index, 0-based)
+# COLUMN ACCESSORS (0-based)
 # ─────────────────────────────────────────────
 
 def col(df, idx):
     return df.iloc[:, idx]
 
-# Sell sheet columns (0-based)
 SELL_SID   = 0
 SELL_STOCK = 1
-SELL_AVQ   = 4   # Available Sell Quantity
-SELL_CP    = 5   # Closing Price
-SELL_VOL   = 11  # Volume
-SELL_VAL   = 12  # Value
+SELL_AVQ   = 4
+SELL_CP    = 5
+SELL_VOL   = 11
+SELL_VAL   = 12
 
-# Buy sheet columns (0-based)
 BUY_SID    = 0
 BUY_STOCK  = 1
-BUY_AVQ    = 4   # Available Quantity
-BUY_CP     = 5   # Closing Price
-BUY_HC     = 7   # Haircut
-BUY_VOL    = 13  # Volume
-BUY_VAL    = 14  # Value
+BUY_AVQ    = 4
+BUY_CP     = 5
+BUY_HC     = 7
+BUY_VOL    = 13
+BUY_VAL    = 14
 
 # ─────────────────────────────────────────────
-# COLLATERAL CALCULATOR (FIX UTAMA)
+# COLLATERAL CALCULATOR
 # ─────────────────────────────────────────────
 
 def calc_collateral_from_rows(rows, qty_col_idx, cp_col_idx, hc_col_idx):
-    """
-    Hitung total collateral value per saham secara akurat.
-    Collateral per baris = Qty × ClosingPrice × (1 - Haircut)
-
-    Berbeda dari versi lama yang memakai rata-rata HC × net_vol,
-    fungsi ini menghitung per baris sehingga akurat meski tiap saham
-    punya harga dan HC yang berbeda.
-
-    Returns:
-        total_collateral (float)
-        detail (list of dict, untuk debug/display)
-    """
     total  = 0.0
     detail = []
     for _, row in rows.iterrows():
-        qty = abs(pd.to_numeric(row.iloc[qty_col_idx], errors="coerce") or 0)
-        cp  = pd.to_numeric(row.iloc[cp_col_idx], errors="coerce") or 0
-        hc  = parse_hc(row.iloc[hc_col_idx])
+        qty  = abs(pd.to_numeric(row.iloc[qty_col_idx], errors="coerce") or 0)
+        cp   = pd.to_numeric(row.iloc[cp_col_idx], errors="coerce") or 0
+        hc   = parse_hc(row.iloc[hc_col_idx])
         coll = qty * cp * (1 - hc)
         total += coll
         detail.append({
@@ -328,7 +172,6 @@ def calc_collateral_from_rows(rows, qty_col_idx, cp_col_idx, hc_col_idx):
             "collateral": coll,
         })
     return total, detail
-
 
 # ─────────────────────────────────────────────
 # VALIDATION LOGIC
@@ -396,15 +239,11 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                 "detail": detail,
             })
 
-        # ── Collateral dari Buy rows (FIX: per saham, bukan rata-rata) ──
-        # Digunakan untuk check 1c (setelah repayment) dan 2b (setelah loan)
         buy_collateral_total, buy_coll_detail = calc_collateral_from_rows(
             buy["rows"], BUY_AVQ, BUY_CP, BUY_HC
         )
 
-        # ── 1. Validasi Repayment Proceed ─────────────────────────────
-
-        # 1a: Per baris Volume Sell ≤ Available Sell Qty
+        # 1a
         rep_1a_pass   = True
         rep_1a_detail = []
         for _, row in sell["rows"].iterrows():
@@ -414,15 +253,13 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             if vol > avq:
                 rep_1a_pass = False
                 rep_1a_detail.append(f"{stk}: Vol {vol:,.0f} > Avail {avq:,.0f}")
-
         add(
             "1a. Volume Sell ≤ Available Sell Quantity",
             rep_1a_pass,
-            "; ".join(rep_1a_detail) if rep_1a_detail
-            else f"Total Volume Sell: {total_sell_vol:,.0f}"
+            "; ".join(rep_1a_detail) if rep_1a_detail else f"Total Volume Sell: {total_sell_vol:,.0f}"
         )
 
-        # 1b: Total Value Sell ≤ Total Value Buy (Loan Value)
+        # 1b
         if not has_loan_request:
             rep_1b_pass   = True
             rep_1b_detail = "Pure repayment tanpa Loan Request — check 1b dilewati"
@@ -434,33 +271,18 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             )
         add("1b. Total Repayment Value ≤ Total Loan Value", rep_1b_pass, rep_1b_detail)
 
-        # 1c: Rasio setelah Repayment < 65%
-        # Numerator   = Loan Existing - Repayment Value + Accrued Interest
-        # Denominator = Collateral dari sisa saham setelah repayment
-        #
-        # FIX: collateral dihitung dari buy_rows per saham (bukan avg × net_vol).
-        # Sisa collateral setelah repayment = buy_collateral_total
-        # (karena repayment melunasi loan lama, buy_collateral_total adalah
-        # collateral baru yang akan menggantikan posisi lama).
-        #
-        # Jika tidak ada buy rows, gunakan approximasi:
-        # collateral_repayment ≈ (volume_existing - total_sell_vol) × avg_price_hc dari sell rows
+        # 1c
         if not has_repayment:
             rep_1c_pass   = True
             rep_1c_detail = "Tidak ada Repayment — check 1c dilewati"
         else:
             loan_num_repayment = loan_existing - total_sell_val + accrued_interest
-
             if buy_collateral_total > 0:
-                # Ada buy rows → pakai collateral baru yang akurat
                 collateral_repayment = buy_collateral_total
             else:
-                # Tidak ada buy rows (pure repayment) → estimasi dari sisa volume × harga sell
-                # Ambil closing price rata-rata dari sell rows sebagai proxy
                 sell_cp_vals = pd.to_numeric(col(sell["rows"], SELL_CP), errors="coerce").dropna()
                 avg_sell_cp  = sell_cp_vals.mean() if len(sell_cp_vals) > 0 else 0
                 sisa_vol     = max(volume_existing - total_sell_vol, 0)
-                # Tanpa HC dari sell file, gunakan 0% sebagai konservatif (worst case)
                 collateral_repayment = sisa_vol * avg_sell_cp
 
             if collateral_repayment > 0:
@@ -472,18 +294,14 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                     f"Collateral: {fmt_rp(collateral_repayment)}"
                 )
             elif loan_num_repayment <= 0:
-                # Loan sudah lunas atau negatif → lolos
                 rep_1c_pass   = True
                 rep_1c_detail = f"Loan Numerator ≤ 0 ({fmt_rp(loan_num_repayment)}) — posisi lunas"
             else:
                 rep_1c_pass   = False
                 rep_1c_detail = "Collateral = 0 sementara Loan masih ada — Rasio tidak terhitung (∞)"
-
         add("1c. Rasio Repayment < 65%", rep_1c_pass, rep_1c_detail)
 
-        # ── 2. Validasi Loan Request ──────────────────────────────────
-
-        # 2a: Per baris Volume Buy ≤ Available Qty
+        # 2a
         loan_2a_pass   = True
         loan_2a_detail = []
         for _, row in buy["rows"].iterrows():
@@ -493,27 +311,19 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             if vol > avq:
                 loan_2a_pass = False
                 loan_2a_detail.append(f"{stk}: Vol {vol:,.0f} > Avail {avq:,.0f}")
-
         add(
             "2a. Volume Buy ≤ Available Quantity",
             loan_2a_pass,
-            "; ".join(loan_2a_detail) if loan_2a_detail
-            else f"Total Volume Buy: {total_buy_vol:,.0f}"
+            "; ".join(loan_2a_detail) if loan_2a_detail else f"Total Volume Buy: {total_buy_vol:,.0f}"
         )
 
-        # 2b: Rasio setelah Loan Request < 65%
-        # Numerator   = Loan Existing - Repayment Value + Accrued Interest + Loan Baru
-        # Denominator = Collateral dari seluruh posisi baru (buy rows)
-        #
-        # FIX: collateral dihitung per saham dari buy_rows, bukan avg × net_vol.
-        # buy_collateral_total sudah dihitung di atas.
+        # 2b
         if not has_loan_request:
             loan_2b_pass   = True
             loan_2b_detail = "Tidak ada Loan Request — check 2b dilewati"
         else:
-            loan_num_2b      = loan_existing - total_sell_val + accrued_interest + total_buy_val
-            collateral_loan  = buy_collateral_total  # per-saham, akurat
-
+            loan_num_2b     = loan_existing - total_sell_val + accrued_interest + total_buy_val
+            collateral_loan = buy_collateral_total
             if collateral_loan > 0:
                 ratio_loan     = loan_num_2b / collateral_loan
                 loan_2b_pass   = ratio_loan < RATIO_THRESHOLD
@@ -522,7 +332,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                     f"Numerator: {fmt_rp(loan_num_2b)} | "
                     f"Collateral: {fmt_rp(collateral_loan)}"
                 )
-                # Tambahkan breakdown collateral per saham jika lebih dari 1 saham
                 if len(buy_coll_detail) > 1:
                     breakdown = " | ".join(
                         f"{d['stock']}: {d['qty']:,.0f}×{fmt_rp(d['cp'])}×(1-{d['hc']*100:.0f}%)={fmt_rp(d['collateral'])}"
@@ -535,10 +344,9 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             else:
                 loan_2b_pass   = False
                 loan_2b_detail = "Collateral = 0 sementara ada Loan — Rasio tidak terhitung (∞)"
-
         add("2b. Rasio Loan Request < 65%", loan_2b_pass, loan_2b_detail)
 
-        # ── 3. Validasi Credit Limit Nasabah ─────────────────────────
+        # 3
         if not has_loan_request:
             cl_nasabah_pass   = True
             cl_nasabah_detail = "Tidak ada Loan Request — check 3 dilewati"
@@ -551,12 +359,11 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                 f"{fmt_rp(effective_limit)} | "
                 f"Loan Diajukan: {fmt_rp(total_buy_val)}"
             )
-
         add("3. Credit Limit Nasabah", cl_nasabah_pass, cl_nasabah_detail)
 
         results[sid] = sid_results
 
-    # ── 4. Validasi Credit Limit Partisipan (global) ─────────────────
+    # 4. Global
     cl_partisipan_pass = (credit_limit_partisipan + global_total_sell_value) > global_total_buy_value
     global_result = {
         "passed":     cl_partisipan_pass,
@@ -571,7 +378,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
     }
 
     return results, global_result
-
 
 # ─────────────────────────────────────────────
 # LOLOS CHECKER
@@ -597,18 +403,13 @@ def lolos_loan(sid_data):
         if any(c["label"].startswith(p) for p in loan_labels)
     )
 
-
 # ─────────────────────────────────────────────
-# EXCEL EXPORT GENERATORS
+# EXCEL EXPORT
 # ─────────────────────────────────────────────
 
 def generate_repayment_excel(df_sell, sid_results):
     today_str = datetime.today().strftime("%Y%m%d")
-
-    passed_sids = [
-        sid for sid, data in sid_results.items()
-        if lolos_repayment(data)
-    ]
+    passed_sids = [sid for sid, data in sid_results.items() if lolos_repayment(data)]
 
     sheet1_rows = []
     for sid in passed_sids:
@@ -616,11 +417,7 @@ def generate_repayment_excel(df_sell, sid_results):
         total_vol = pd.to_numeric(col(rows, SELL_VOL), errors="coerce").abs().sum()
         if total_vol > 0:
             total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").abs().sum()
-            sheet1_rows.append({
-                "Participant Code": "EP",
-                "SID Client":       sid,
-                "Repayment Value":  total_val,
-            })
+            sheet1_rows.append({"Participant Code": "EP", "SID Client": sid, "Repayment Value": total_val})
 
     sheet2_rows = []
     for sid in passed_sids:
@@ -628,11 +425,7 @@ def generate_repayment_excel(df_sell, sid_results):
         for _, row in rows.iterrows():
             qty = abs(pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0)
             if qty > 0:
-                sheet2_rows.append({
-                    "SID Client": sid,
-                    "Stock Code": str(row.iloc[SELL_STOCK]),
-                    "Quantity":   qty,
-                })
+                sheet2_rows.append({"SID Client": sid, "Stock Code": str(row.iloc[SELL_STOCK]), "Quantity": qty})
 
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -644,11 +437,7 @@ def generate_repayment_excel(df_sell, sid_results):
 
 def generate_loan_excel(df_buy, sid_results):
     today_str = datetime.today().strftime("%Y%m%d")
-
-    passed_sids = [
-        sid for sid, data in sid_results.items()
-        if lolos_loan(data)
-    ]
+    passed_sids = [sid for sid, data in sid_results.items() if lolos_loan(data)]
 
     sheet1_rows = []
     for sid in passed_sids:
@@ -656,11 +445,7 @@ def generate_loan_excel(df_buy, sid_results):
         total_vol = pd.to_numeric(col(rows, BUY_VOL), errors="coerce").sum()
         total_val = pd.to_numeric(col(rows, BUY_VAL), errors="coerce").sum()
         if total_vol > 0:
-            sheet1_rows.append({
-                "Participant Code": "EP",
-                "SID Client":       sid,
-                "Loan Value":       total_val,
-            })
+            sheet1_rows.append({"Participant Code": "EP", "SID Client": sid, "Loan Value": total_val})
 
     sheet2_rows = []
     for sid in passed_sids:
@@ -668,11 +453,7 @@ def generate_loan_excel(df_buy, sid_results):
         for _, row in rows.iterrows():
             qty = pd.to_numeric(row.iloc[BUY_VOL], errors="coerce") or 0
             if qty > 0:
-                sheet2_rows.append({
-                    "SID Client": sid,
-                    "Stock Code": str(row.iloc[BUY_STOCK]),
-                    "Quantity":   qty,
-                })
+                sheet2_rows.append({"SID Client": sid, "Stock Code": str(row.iloc[BUY_STOCK]), "Quantity": qty})
 
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as writer:
@@ -681,103 +462,78 @@ def generate_loan_excel(df_buy, sid_results):
     buf.seek(0)
     return buf, f"Loan Request {today_str}.xlsx"
 
-
 # ─────────────────────────────────────────────
-# UI
+# UI — UPLOAD
 # ─────────────────────────────────────────────
 
-st.markdown("# Validasi MNC")
-st.markdown(
-    '<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.85rem;">'
-    'Sistem Validasi Repayment &amp; Loan Request</p>',
-    unsafe_allow_html=True,
-)
-
-st.divider()
-
-# ── Upload section ────────────────────────────────────────────────────
+st.subheader("📂 Upload File")
 col1, col2, col3 = st.columns(3)
 
 with col1:
-    section("📂 File Hasil_MNC")
-    hasil_file = st.file_uploader("Upload Hasil_MNC.xlsx", type=["xlsx", "xls"], key="hasil")
+    hasil_file = st.file_uploader("1. Hasil_MNC (xlsx)", type=["xlsx", "xls"], key="hasil")
 
 with col2:
-    section("📄 File OP (.txt)")
-    op_file = st.file_uploader("Upload OP_YYYYMMDD_EP.txt", type=["txt"], key="op")
+    op_file = st.file_uploader("2. File OP (.txt)", type=["txt"], key="op")
 
 with col3:
-    section("📄 File Credit Limit (.txt)")
-    cl_file = st.file_uploader("Upload CreditLimit_YYYYMMDD_EP.txt", type=["txt"], key="cl")
+    cl_file = st.file_uploader("3. Credit Limit (.txt)", type=["txt"], key="cl")
 
-st.divider()
-
-# ── Preview file txt setelah upload ──────────────────────────────────
+# ── Preview setelah upload ────────────────────────────────────────────
 if op_file or cl_file:
     prev_col1, prev_col2 = st.columns(2)
 
     if op_file:
         with prev_col1:
-            section("👁 Preview OP File")
+            st.subheader("👁 Preview OP File")
             try:
                 op_content_prev = op_file.read().decode("utf-8", errors="replace")
-                op_file.seek(0)  # reset agar bisa dibaca lagi saat validasi
+                op_file.seek(0)
                 op_prev = parse_op_file(op_content_prev)
-                # Tampilkan 3 SID pertama sebagai sampel
                 sample_sids = list(op_prev.keys())[:3]
                 for s in sample_sids:
                     d = op_prev[s]
-                    st.markdown(
-                        f'<div class="preview-box">'
-                        f'<div class="preview-label">SID: {s}</div>'
-                        f'<b>{d["name"]}</b><br>'
-                        f'Loan: {fmt_rp(d["loan_existing"])} | '
-                        f'Accrued: {fmt_rp(d["accrued_interest"])} | '
-                        f'Vol Existing: {d["volume_existing"]:,.0f} lot | '
-                        f'Saham: {len(d["stocks"])} kode'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    with st.container(border=True):
+                        st.markdown(f"**SID: {s}** — {d['name']}")
+                        st.caption(
+                            f"Loan: {fmt_rp(d['loan_existing'])} | "
+                            f"Accrued: {fmt_rp(d['accrued_interest'])} | "
+                            f"Vol Existing: {d['volume_existing']:,.0f} lot | "
+                            f"Saham: {len(d['stocks'])} kode"
+                        )
                 st.caption(f"Total {len(op_prev)} nasabah terbaca dari OP file.")
             except Exception as ex:
                 st.error(f"Gagal preview OP: {ex}")
 
     if cl_file:
         with prev_col2:
-            section("👁 Preview Credit Limit File")
+            st.subheader("👁 Preview Credit Limit File")
             try:
                 cl_content_prev = cl_file.read().decode("utf-8", errors="replace")
-                cl_file.seek(0)  # reset
+                cl_file.seek(0)
                 cl_prev, vdate = parse_credit_limit_file(cl_content_prev)
 
-                # Cek value date vs hari ini
                 today_str_check = datetime.today().strftime("%Y/%m/%d")
                 if vdate and vdate != today_str_check:
-                    st.markdown(
-                        f'<div class="date-warn">⚠️ Value Date file: <b>{vdate}</b> — '
-                        f'berbeda dengan hari ini ({today_str_check}). '
-                        f'Pastikan file sudah sesuai tanggal transaksi.</div>',
-                        unsafe_allow_html=True,
+                    st.warning(
+                        f"⚠️ Value Date file: **{vdate}** — "
+                        f"berbeda dengan hari ini ({today_str_check}). "
+                        f"Pastikan file sudah sesuai tanggal transaksi."
                     )
 
                 sample_sids = list(cl_prev.keys())[:3]
                 for s in sample_sids:
                     d = cl_prev[s]
-                    st.markdown(
-                        f'<div class="preview-box">'
-                        f'<div class="preview-label">SID: {s}</div>'
-                        f'<b>{d["name"]}</b><br>'
-                        f'Available Limit: {fmt_rp(d["available_limit"])}'
-                        f'</div>',
-                        unsafe_allow_html=True,
-                    )
+                    with st.container(border=True):
+                        st.markdown(f"**SID: {s}** — {d['name']}")
+                        st.caption(f"Available Limit: {fmt_rp(d['available_limit'])}")
                 st.caption(f"Total {len(cl_prev)} nasabah terbaca dari Credit Limit file.")
             except Exception as ex:
                 st.error(f"Gagal preview Credit Limit: {ex}")
 
     st.divider()
 
-section("💼 Credit Limit Partisipan")
+# ── Credit Limit Partisipan ───────────────────────────────────────────
+st.subheader("💼 Credit Limit Partisipan")
 credit_limit_partisipan = st.number_input(
     "Masukkan nilai Credit Limit Partisipan (Rp)",
     min_value=0.0,
@@ -789,10 +545,27 @@ credit_limit_partisipan = st.number_input(
 
 st.divider()
 
-run_btn = st.button("▶ Jalankan Validasi", use_container_width=True)
+# ── Panduan ───────────────────────────────────────────────────────────
+with st.expander("📖 Panduan Validasi"):
+    st.markdown("""
+    | # | Cek | Keterangan |
+    |---|-----|------------|
+    | 1a | Volume Sell ≤ Available Sell Qty | Per baris di Sell sheet |
+    | 1b | Total Repayment Value ≤ Total Loan Value | Hanya jika ada Loan Request |
+    | 1c | Rasio Repayment < 65% | (Loan Existing − Repayment + Accrued) / Collateral |
+    | 2a | Volume Buy ≤ Available Quantity | Per baris di Buy sheet |
+    | 2b | Rasio Loan Request < 65% | (Loan Existing − Repayment + Accrued + Loan Baru) / Collateral |
+    | 3  | Credit Limit Nasabah | (Avail Limit + Sell Value) > Loan Diajukan |
+    | 4  | Credit Limit Partisipan | Global: (CL Partisipan + Total Sell) > Total Loan |
+
+    > **Lolos Repayment:** 1a + 1b + 1c  
+    > **Lolos Loan Request:** 1a + 1c + 2a + 2b + 3
+    """)
+
+run_btn = st.button("▶ Jalankan Validasi", use_container_width=True, type="primary")
 
 # ─────────────────────────────────────────────
-# RUN
+# RUN VALIDASI
 # ─────────────────────────────────────────────
 
 if run_btn:
@@ -806,7 +579,7 @@ if run_btn:
             st.error(e)
         st.stop()
 
-    with st.spinner("Memproses file..."):
+    with st.spinner("⚙️ Memproses seluruh data..."):
         try:
             df_sell, df_buy = load_hasil_mnc(hasil_file)
         except Exception as ex:
@@ -831,138 +604,105 @@ if run_btn:
             df_sell, df_buy, op_data, cl_data, credit_limit_partisipan
         )
 
-    # ── Summary metrics ──────────────────────────────────────────────
+    st.success("✅ Validasi Selesai!")
+
+    # ── Metric Cards ─────────────────────────────────────────────────
     total_sids      = len(sid_results)
     total_pass_rep  = sum(1 for v in sid_results.values() if lolos_repayment(v))
     total_pass_loan = sum(1 for v in sid_results.values() if lolos_loan(v))
-    total_pass_all  = sum(
-        1 for v in sid_results.values()
-        if all(c["passed"] for c in v["checks"])
-    )
-    global_pass = global_result["passed"]
+    total_pass_all  = sum(1 for v in sid_results.values() if all(c["passed"] for c in v["checks"]))
+    global_pass     = global_result["passed"]
 
-    st.markdown("### 📊 Ringkasan Hasil Validasi")
     m1, m2, m3, m4, m5 = st.columns(5)
-
-    with m1:
-        st.markdown(f'''<div class="metric-card">
-            <div class="metric-label">Total Nasabah</div>
-            <div class="metric-value" style="color:#1a5fe8">{total_sids}</div>
-        </div>''', unsafe_allow_html=True)
-    with m2:
-        st.markdown(f'''<div class="metric-card">
-            <div class="metric-label">Lolos Repayment</div>
-            <div class="metric-value" style="color:#22a84a">{total_pass_rep}</div>
-        </div>''', unsafe_allow_html=True)
-    with m3:
-        st.markdown(f'''<div class="metric-card">
-            <div class="metric-label">Lolos Loan</div>
-            <div class="metric-value" style="color:#22a84a">{total_pass_loan}</div>
-        </div>''', unsafe_allow_html=True)
-    with m4:
-        st.markdown(f'''<div class="metric-card">
-            <div class="metric-label">Lolos Semua</div>
-            <div class="metric-value" style="color:#f9a825">{total_pass_all}</div>
-        </div>''', unsafe_allow_html=True)
-    with m5:
-        cl_color = "#22a84a" if global_pass else "#e53935"
-        cl_label = "LOLOS" if global_pass else "GAGAL"
-        st.markdown(f'''<div class="metric-card">
-            <div class="metric-label">CL Partisipan</div>
-            <div class="metric-value" style="color:{cl_color}">{cl_label}</div>
-        </div>''', unsafe_allow_html=True)
+    m1.metric("Total Nasabah",    total_sids)
+    m2.metric("Lolos Repayment",  total_pass_rep)
+    m3.metric("Lolos Loan",       total_pass_loan)
+    m4.metric("Lolos Semua",      total_pass_all)
+    m5.metric("CL Partisipan",    "✅ LOLOS" if global_pass else "❌ GAGAL")
 
     st.divider()
 
-    # ── Validasi 4: Credit Limit Partisipan (global) ─────────────────
-    section("VALIDASI 4 — Credit Limit Partisipan (Global)")
-    if global_result["passed"]:
-        pass_box(f"Credit Limit Partisipan LOLOS — {global_result['detail']}")
-    else:
-        fail_box(f"Credit Limit Partisipan GAGAL — {global_result['detail']}")
+    # ── Tabs ─────────────────────────────────────────────────────────
+    tab_global, tab_per_sid, tab_export = st.tabs([
+        "🌐 Validasi 4 (Global)",
+        "👤 Validasi Per Nasabah",
+        "📥 Export Hasil",
+    ])
 
-    st.divider()
+    # Tab 1: Global CL Partisipan
+    with tab_global:
+        st.subheader("Validasi 4 — Credit Limit Partisipan (Global)")
+        if global_result["passed"]:
+            st.success(f"✅ Credit Limit Partisipan LOLOS — {global_result['detail']}")
+        else:
+            st.error(f"❌ Credit Limit Partisipan GAGAL — {global_result['detail']}")
 
-    # ── Per-SID results ───────────────────────────────────────────────
-    section("VALIDASI PER NASABAH")
-    st.markdown(
-        '<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.75rem;">'
-        '🟢 R = Lolos Repayment &nbsp;|&nbsp; 🟢 L = Lolos Loan &nbsp;|&nbsp; '
-        '🔴 R = Gagal Repayment &nbsp;|&nbsp; 🔴 L = Gagal Loan</p>',
-        unsafe_allow_html=True,
-    )
+    # Tab 2: Per-SID
+    with tab_per_sid:
+        st.caption("🟢 R = Lolos Repayment  |  🟢 L = Lolos Loan  |  🔴 R = Gagal Repayment  |  🔴 L = Gagal Loan")
+        for sid, data in sid_results.items():
+            checks   = data["checks"]
+            r_pass   = lolos_repayment(data)
+            l_pass   = lolos_loan(data)
+            r_icon   = "✅ R" if r_pass else "❌ R"
+            l_icon   = "✅ L" if l_pass else "❌ L"
+            expanded = not (r_pass and l_pass)
 
-    for sid, data in sid_results.items():
-        checks   = data["checks"]
-        r_pass   = lolos_repayment(data)
-        l_pass   = lolos_loan(data)
-        r_icon   = "✅ R" if r_pass else "❌ R"
-        l_icon   = "✅ L" if l_pass else "❌ L"
-        expanded = not (r_pass and l_pass)
+            with st.expander(f"{r_icon} | {l_icon} | {sid} — {data['name']}", expanded=expanded):
+                for check in checks:
+                    if check["passed"]:
+                        st.success(f"✅ **{check['label']}**  {check['detail']}")
+                    else:
+                        st.error(f"❌ **{check['label']}**  {check['detail']}")
 
-        with st.expander(f"{r_icon} | {l_icon} | {sid} — {data['name']}", expanded=expanded):
-            for check in checks:
-                if check["passed"]:
-                    pass_box(f"{check['label']} &nbsp;|&nbsp; {check['detail']}")
-                else:
-                    fail_box(f"{check['label']} &nbsp;|&nbsp; {check['detail']}")
+    # Tab 3: Export
+    with tab_export:
+        # Summary table
+        st.subheader("📋 Ringkasan Hasil Validasi")
+        summary_rows = []
+        for sid, data in sid_results.items():
+            row = {"SID": sid, "Nama": data["name"]}
+            for check in data["checks"]:
+                row[check["label"]] = "LOLOS" if check["passed"] else "GAGAL"
+            row["Status Repayment"] = "LOLOS" if lolos_repayment(data) else "GAGAL"
+            row["Status Loan"]      = "LOLOS" if lolos_loan(data)      else "GAGAL"
+            summary_rows.append(row)
 
-    st.divider()
+        df_summary = pd.DataFrame(summary_rows)
+        st.dataframe(df_summary, use_container_width=True)
 
-    # ── Export summary table ──────────────────────────────────────────
-    section("📥 Export Hasil Validasi")
-
-    summary_rows = []
-    for sid, data in sid_results.items():
-        row = {"SID": sid, "Nama": data["name"]}
-        for check in data["checks"]:
-            row[check["label"]] = "LOLOS" if check["passed"] else "GAGAL"
-        row["Status Repayment"] = "LOLOS" if lolos_repayment(data) else "GAGAL"
-        row["Status Loan"]      = "LOLOS" if lolos_loan(data)      else "GAGAL"
-        summary_rows.append(row)
-
-    df_summary = pd.DataFrame(summary_rows)
-    st.dataframe(df_summary, use_container_width=True)
-
-    buf = io.BytesIO()
-    df_summary.to_excel(buf, index=False)
-    buf.seek(0)
-    st.download_button(
-        "⬇️ Download Hasil Validasi (.xlsx)",
-        data=buf,
-        file_name="hasil_validasi.xlsx",
-        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-    )
-
-    st.divider()
-
-    # ── Export ke Dashboard Kantor ────────────────────────────────────
-    section("📤 Export ke Dashboard Kantor")
-    st.markdown(
-        '<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.8rem;">'
-        'Repayment Proceed: lolos 1a + 1b + 1c. &nbsp;|&nbsp; '
-        'Loan Request: lolos 1a + 1c + 2a + 2b + 3.</p>',
-        unsafe_allow_html=True,
-    )
-
-    dl_col1, dl_col2 = st.columns(2)
-
-    with dl_col1:
-        rep_buf, rep_fname = generate_repayment_excel(df_sell, sid_results)
+        buf_sum = io.BytesIO()
+        df_summary.to_excel(buf_sum, index=False)
+        buf_sum.seek(0)
         st.download_button(
-            label="⬇️ Repayment Proceed (.xlsx)",
-            data=rep_buf,
-            file_name=rep_fname,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
+            "⬇️ Download Hasil Validasi (.xlsx)",
+            data=buf_sum,
+            file_name="hasil_validasi.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
         )
 
-    with dl_col2:
-        loan_buf, loan_fname = generate_loan_excel(df_buy, sid_results)
-        st.download_button(
-            label="⬇️ Loan Request (.xlsx)",
-            data=loan_buf,
-            file_name=loan_fname,
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-            use_container_width=True,
-        )
+        st.divider()
+
+        # Export ke Dashboard Kantor
+        st.subheader("📤 Export ke Dashboard Kantor")
+        st.caption("Repayment Proceed: lolos 1a + 1b + 1c  |  Loan Request: lolos 1a + 1c + 2a + 2b + 3")
+
+        dl_col1, dl_col2 = st.columns(2)
+        with dl_col1:
+            rep_buf, rep_fname = generate_repayment_excel(df_sell, sid_results)
+            st.download_button(
+                label="⬇️ Repayment Proceed (.xlsx)",
+                data=rep_buf,
+                file_name=rep_fname,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
+        with dl_col2:
+            loan_buf, loan_fname = generate_loan_excel(df_buy, sid_results)
+            st.download_button(
+                label="⬇️ Loan Request (.xlsx)",
+                data=loan_buf,
+                file_name=loan_fname,
+                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                use_container_width=True,
+            )
