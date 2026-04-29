@@ -518,12 +518,12 @@ else:
         st.markdown("""
         | # | File | Sumber File |
         |---|------|-------------|
-        | 1 | **Netting Invoice** | `Hasil generate Netting List of Invoice dari data mentah List of Invoice` |
-        | 2 | **SID Client** | `Template excel yang berisi kolom SID, CID, Name` |
-        | 3 | **Risk Parameter** | `File .txt yang diunduh pada menu Report melalui I-Fast Web` |
-        | 4 | **Margin Buy** | `File .txt yang diunduh pada menu Daily Transaction melalui I-Fast Web` |
-        | 5 | **Margin Sell** | `File .txt yang diunduh pada menu Daily Transaction melalui I-Fast Web` |
-        | 6 | **Outstanding Position** | file .txt yang diunduh melalui I-Fast Web' |
+        | 1 | **Netting Invoice** | Hasil generate Netting List of Invoice dari data mentah List of Invoice |
+        | 2 | **SID Client** | Template excel yang berisi kolom SID, CID, Name |
+        | 3 | **Risk Parameter** | File .txt yang diunduh pada menu Report melalui I-Fast Web |
+        | 4 | **Margin Buy** | File .txt yang diunduh pada menu Daily Transaction melalui I-Fast Web |
+        | 5 | **Margin Sell** | File .txt yang diunduh pada menu Daily Transaction melalui I-Fast Web |
+        | 6 | **Outstanding Position** | File .txt yang diunduh melalui I-Fast Web |
         
         > **Outstanding Position (OP)** dipakai untuk menentukan nilai portofolio client.
         """)
