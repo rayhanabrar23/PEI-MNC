@@ -90,7 +90,7 @@ if uploaded_file:
             st.download_button(
                 label="📥 Download Netting Volume Only.xlsx",
                 data=output_netting_vol.getvalue(),
-                file_name="MNCN_Netting_Volume.xlsx",
+                file_name="Netting Invoice.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
