@@ -37,17 +37,45 @@ def find_and_rename(df):
     return df.rename(columns=rename_dict)
 
 
+# ── REVISI: clean_num sekarang bisa membedakan titik desimal vs titik ribuan ──
 def clean_num(df, extra_keys=None):
+    """
+    Membersihkan kolom numerik dari format angka kotor:
+    - Koma sebagai separator ribuan (EN): "1,000" → 1000
+    - Titik sebagai separator ribuan (ID): "1.000" → 1000
+    - Kombinasi keduanya: "1,000.50" → 1000.50
+
+    Logika deteksi titik ribuan vs desimal:
+    - Jika pola cocok "ddd.ddd" (tepat 3 digit setelah titik) → titik ribuan → hapus titik
+    - Selain itu → titik desimal → biarkan
+    """
+    import re
+
     num_keys = ['amt', 'vol', 'qty', 'val', 'price', 'avail',
                 'haircut', 'collateral', 'quantity', 'margin']
     if extra_keys:
         num_keys += extra_keys
+
+    def parse_number(s):
+        s = str(s).strip().replace('"', '')
+        if s in ('', 'nan', 'None', '-'):
+            return 0.0
+        # Hapus koma sebagai separator ribuan (EN style: 1,000 atau 1,000.50)
+        s = s.replace(',', '')
+        # Deteksi titik sebagai separator ribuan (ID style: 1.000 atau 300.000)
+        # Ciri khasnya: titik diikuti tepat 3 digit dan tidak ada karakter angka setelah itu
+        # Contoh: "300.000" → kotor → jadi 300000
+        # Tapi "300.5" atau "1234.56" → desimal → biarkan
+        if re.fullmatch(r'\d{1,3}(\.\d{3})+', s):
+            # Pola ribuan ID murni tanpa desimal: hapus semua titik
+            s = s.replace('.', '')
+        # Setelah ini, sisa titik adalah pemisah desimal → pd.to_numeric bisa handle
+        return pd.to_numeric(s, errors='coerce') or 0.0
+
     for c in df.columns:
         if any(k in str(c).lower() for k in num_keys):
-            df[c] = pd.to_numeric(
-                df[c].astype(str).str.replace(',', '').str.replace('"', ''),
-                errors='coerce'
-            ).fillna(0)
+            df[c] = df[c].apply(parse_number)
+
     return df
 
 
@@ -76,11 +104,11 @@ with col_u1:
     file_sid_client = st.file_uploader("2. SID Client (xlsx)",       type=['xlsx'])
 
 with col_u2:
-    file_risk  = st.file_uploader("3. Risk Parameter (.txt)",  type=['txt'])  # ← diubah
-    file_m_buy = st.file_uploader("4. Margin Buy (.txt)",      type=['txt'])  # ← diubah
+    file_risk  = st.file_uploader("3. Risk Parameter (.txt)",  type=['txt'])
+    file_m_buy = st.file_uploader("4. Margin Buy (.txt)",      type=['txt'])
 
 with col_u3:
-    file_m_sell = st.file_uploader("5. Margin Sell (.txt)",    type=['txt'])  # ← diubah
+    file_m_sell = st.file_uploader("5. Margin Sell (.txt)",    type=['txt'])
     file_ep     = st.file_uploader("6. File OP (.txt)",        type=['txt'])
 
 # ─────────────────────────────────────────────
@@ -96,27 +124,28 @@ if all(required_files):
             df_inv  = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
             df_sid  = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
 
-            # Risk Parameter: txt pipe-separated, rename kolom ke standar
+            # Risk Parameter: txt pipe-separated
             df_risk = find_and_rename(
-                pd.read_csv(file_risk, sep='|', dtype=str)  # ← diubah
+                pd.read_csv(file_risk, sep='|', dtype=str)
             )
+            df_risk.columns = df_risk.columns.str.strip()
+            df_risk = clean_num(df_risk)  # ← REVISI: bersihkan data kotor risk
 
             # Margin Buy: txt pipe-separated
-            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={  # ← diubah
+            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={
                 'SID':        'sid_key',
                 'STOCK CODE': 'stock_key',
             })
+            df_mbuy.columns = df_mbuy.columns.str.strip()
+            df_mbuy = clean_num(df_mbuy)  # ← REVISI: bersihkan data kotor margin buy
 
             # Margin Sell: txt pipe-separated
-            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={  # ← diubah
+            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={
                 'SID':        'sid_key',
                 'STOCK CODE': 'stock_key',
             })
-
-            # Strip spasi pada nama kolom (txt kadang punya spasi di header)
-            df_risk.columns  = df_risk.columns.str.strip()
-            df_mbuy.columns  = df_mbuy.columns.str.strip()
             df_msell.columns = df_msell.columns.str.strip()
+            df_msell = clean_num(df_msell)  # ← REVISI: bersihkan data kotor margin sell
 
             # ── 4b. VOLUME FORMULA ────────────────────────────
             if 'Volume_Formula' not in df_inv.columns:
