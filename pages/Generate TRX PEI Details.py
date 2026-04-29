@@ -11,7 +11,7 @@ st.title("📑 TRX PEI Details Generator")
 st.info(
     "Sistem ini memproses transaksi nasabah PEI: "
     "**Buy (Loan)** · **Sell (Repayment)** · "
-    "**Portofolio Kolateral** · **Loan Request**"
+    "**Repayment Proceed** · **Loan Request**"
 )
 
 # ─────────────────────────────────────────────
@@ -511,7 +511,7 @@ if all(required_files):
         st.exception(e)
 
 else:
-    st.warning("⬆️ Upload minimal 5 file wajib (Netting Invoice, SID Client, Risk Parameter, Margin Buy, Margin Sell) untuk memulai.")
+    st.warning("⬆️ Upload 6 file wajib (Netting Invoice, SID Client, Risk Parameter, Margin Buy, Margin Sell, OP) untuk memulai.")
 
     # Panduan struktur file
     with st.expander("📖 Panduan Struktur File"):
@@ -523,7 +523,7 @@ else:
         | 3 | **Risk Parameter** | `Stock Code`, `Stock Name`, `Haircut`, `Available Quantity` |
         | 4 | **Margin Buy** | `SID`, `STOCK CODE`, `MARGIN BUY QUANTITY`, `LOAN QUANTITY`, `AVAILABLE QUANTITY`, `CLOSING PRICE`, `AVAILABLE MARKET VALUE`, `HAIRCUT`, `AVAILABLE COLLATERAL VALUE` |
         | 5 | **Margin Sell** | `SID`, `STOCK CODE`, `REGULAR SELL QUANTITY`, `REPAYMENT QUANTITY`, `AVAILABLE SELL QUANTITY`, `CLOSING PRICE`, `AVAILABLE SELL VALUE` |
-        | 6 | **Portofolio Client** *(opsional)* | Sheet per CID, kolom: `STOCK`, `HC`, `COLLATERAL (VOL)`, `PRICE`, `COLLATERAL (IDR-HC)` |
+        | 6 | **Outstanding Position** | file txt tanpa diubah strukturnya |
         
-        > **Portofolio Client** dipakai untuk sheet **Portofolio Kolateral** dan **Loan Request**.
+        > **Outstanding Position (OP)** dipakai untuk menentukan nilai portofolio client.
         """)
