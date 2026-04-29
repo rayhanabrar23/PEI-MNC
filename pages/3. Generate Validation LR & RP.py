@@ -404,7 +404,7 @@ def lolos_loan(sid_data):
     )
 
 # ─────────────────────────────────────────────
-# EXCEL EXPORT
+# EXCEL EXPORT — LOLOS
 # ─────────────────────────────────────────────
 
 def generate_repayment_excel(df_sell, sid_results):
@@ -461,6 +461,84 @@ def generate_loan_excel(df_buy, sid_results):
         pd.DataFrame(sheet2_rows).to_excel(writer, sheet_name="Detail Collateral", index=False)
     buf.seek(0)
     return buf, f"Loan Request {today_str}.xlsx"
+
+# ─────────────────────────────────────────────
+# EXCEL EXPORT — REVISI (NASABAH GAGAL)
+# ─────────────────────────────────────────────
+
+def generate_revisi_repayment_excel(df_sell, sid_results, op_data):
+    today_str   = datetime.today().strftime("%Y%m%d")
+    failed_sids = [
+        sid for sid, data in sid_results.items()
+        if data.get("has_repayment") and not lolos_repayment(data)
+    ]
+
+    # Sheet 1 — Ringkasan alasan gagal per check
+    alasan_rows = []
+    for sid in failed_sids:
+        data = sid_results[sid]
+        op   = op_data.get(sid, {})
+        for check in data["checks"]:
+            if check["label"].startswith(("1a.", "1b.", "1c.")) and not check["passed"]:
+                alasan_rows.append({
+                    "SID"             : sid,
+                    "Nama"            : data["name"],
+                    "Check Gagal"     : check["label"],
+                    "Detail Alasan"   : check["detail"],
+                    "Loan Existing"   : op.get("loan_existing", "-"),
+                    "Accrued Interest": op.get("accrued_interest", "-"),
+                    "Volume Existing" : op.get("volume_existing", "-"),
+                })
+
+    # Sheet 2 — Data transaksi sell nasabah gagal (bisa diedit & upload ulang)
+    df_failed_sell = df_sell[
+        col(df_sell, SELL_SID).astype(str).isin([str(s) for s in failed_sids])
+    ].copy()
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(alasan_rows).to_excel(writer, sheet_name="Alasan Gagal",    index=False)
+        df_failed_sell.to_excel(           writer, sheet_name="Sell (Repayment)", index=False)
+    buf.seek(0)
+    return buf, f"Revisi Repayment {today_str}.xlsx", len(failed_sids)
+
+
+def generate_revisi_loan_excel(df_buy, sid_results, op_data, cl_data):
+    today_str   = datetime.today().strftime("%Y%m%d")
+    failed_sids = [
+        sid for sid, data in sid_results.items()
+        if data.get("has_loan_request") and not lolos_loan(data)
+    ]
+
+    # Sheet 1 — Ringkasan alasan gagal per check
+    alasan_rows = []
+    for sid in failed_sids:
+        data = sid_results[sid]
+        op   = op_data.get(sid, {})
+        cl   = cl_data.get(sid, {})
+        for check in data["checks"]:
+            if check["label"].startswith(("1a.", "1c.", "2a.", "2b.", "3.")) and not check["passed"]:
+                alasan_rows.append({
+                    "SID"             : sid,
+                    "Nama"            : data["name"],
+                    "Check Gagal"     : check["label"],
+                    "Detail Alasan"   : check["detail"],
+                    "Loan Existing"   : op.get("loan_existing", "-"),
+                    "Accrued Interest": op.get("accrued_interest", "-"),
+                    "Available Limit" : cl.get("available_limit", "-"),
+                })
+
+    # Sheet 2 — Data transaksi buy nasabah gagal (bisa diedit & upload ulang)
+    df_failed_buy = df_buy[
+        col(df_buy, BUY_SID).astype(str).isin([str(s) for s in failed_sids])
+    ].copy()
+
+    buf = io.BytesIO()
+    with pd.ExcelWriter(buf, engine="openpyxl") as writer:
+        pd.DataFrame(alasan_rows).to_excel(writer, sheet_name="Alasan Gagal", index=False)
+        df_failed_buy.to_excel(            writer, sheet_name="Buy (Loan)",   index=False)
+    buf.seek(0)
+    return buf, f"Revisi Loan Request {today_str}.xlsx", len(failed_sids)
 
 # ─────────────────────────────────────────────
 # UI — UPLOAD
@@ -619,26 +697,29 @@ if run_btn:
     total_sids      = len(sid_results)
     total_pass_rep  = sum(1 for v in sid_results.values() if lolos_repayment(v))
     total_pass_loan = sum(1 for v in sid_results.values() if lolos_loan(v))
-    total_pass_all  = sum(1 for v in sid_results.values() if all(c["passed"] for c in v["checks"]))
+    total_fail_rep  = sum(1 for v in sid_results.values() if v.get("has_repayment")    and not lolos_repayment(v))
+    total_fail_loan = sum(1 for v in sid_results.values() if v.get("has_loan_request") and not lolos_loan(v))
     global_pass     = global_result["passed"]
 
-    m1, m2, m3, m4, m5 = st.columns(5)
-    m1.metric("Total Nasabah",    total_sids)
-    m2.metric("Lolos Repayment",  total_pass_rep)
-    m3.metric("Lolos Loan",       total_pass_loan)
-    m4.metric("Lolos Semua",      total_pass_all)
-    m5.metric("CL Partisipan",    "✅ LOLOS" if global_pass else "❌ GAGAL")
+    m1, m2, m3, m4, m5, m6 = st.columns(6)
+    m1.metric("Total Nasabah",      total_sids)
+    m2.metric("Lolos Repayment",    total_pass_rep)
+    m3.metric("Lolos Loan",         total_pass_loan)
+    m4.metric("Gagal Repayment",    total_fail_rep,  delta=f"-{total_fail_rep}"  if total_fail_rep  else None, delta_color="inverse")
+    m5.metric("Gagal Loan",         total_fail_loan, delta=f"-{total_fail_loan}" if total_fail_loan else None, delta_color="inverse")
+    m6.metric("CL Partisipan",      "✅ LOLOS" if global_pass else "❌ GAGAL")
 
     st.divider()
 
     # ── Tabs ─────────────────────────────────────────────────────────
-    tab_global, tab_per_sid, tab_export = st.tabs([
+    tab_global, tab_per_sid, tab_gagal, tab_export = st.tabs([
         "🌐 Validasi 4 (Global)",
         "👤 Validasi Per Nasabah",
+        "❌ Nasabah Gagal",
         "📥 Export Hasil",
     ])
 
-    # Tab 1: Global CL Partisipan
+    # ── Tab 1: Global CL Partisipan ───────────────────────────────────
     with tab_global:
         st.subheader("Validasi 4 — Credit Limit Partisipan (Global)")
         if global_result["passed"]:
@@ -646,7 +727,7 @@ if run_btn:
         else:
             st.error(f"❌ Credit Limit Partisipan GAGAL — {global_result['detail']}")
 
-    # Tab 2: Per-SID
+    # ── Tab 2: Per-SID ────────────────────────────────────────────────
     with tab_per_sid:
         st.caption("🟢 R = Lolos Repayment  |  🟢 L = Lolos Loan  |  🔴 R = Gagal Repayment  |  🔴 L = Gagal Loan")
         for sid, data in sid_results.items():
@@ -664,9 +745,53 @@ if run_btn:
                     else:
                         st.error(f"❌ **{check['label']}**  {check['detail']}")
 
-    # Tab 3: Export
+    # ── Tab 3: Nasabah Gagal ──────────────────────────────────────────
+    with tab_gagal:
+        st.subheader("Nasabah yang Tidak Lolos Validasi")
+        st.caption(
+            "Daftar ini menunjukkan nasabah yang perlu direvisi sebelum dapat di-upload ke sistem. "
+            "Download file revisi di tab **Export Hasil**."
+        )
+
+        gagal_rep  = [(sid, d) for sid, d in sid_results.items()
+                      if d.get("has_repayment")    and not lolos_repayment(d)]
+        gagal_loan = [(sid, d) for sid, d in sid_results.items()
+                      if d.get("has_loan_request") and not lolos_loan(d)]
+
+        gcol1, gcol2 = st.columns(2)
+
+        with gcol1:
+            st.markdown(f"#### 🔴 Gagal Repayment — {len(gagal_rep)} nasabah")
+            if not gagal_rep:
+                st.success("Semua nasabah lolos Repayment.")
+            else:
+                for sid, data in gagal_rep:
+                    failed_checks = [
+                        c for c in data["checks"]
+                        if c["label"].startswith(("1a.", "1b.", "1c.")) and not c["passed"]
+                    ]
+                    with st.expander(f"❌ {sid} — {data['name']}"):
+                        for c in failed_checks:
+                            st.error(f"**{c['label']}** — {c['detail']}")
+
+        with gcol2:
+            st.markdown(f"#### 🔴 Gagal Loan Request — {len(gagal_loan)} nasabah")
+            if not gagal_loan:
+                st.success("Semua nasabah lolos Loan Request.")
+            else:
+                for sid, data in gagal_loan:
+                    failed_checks = [
+                        c for c in data["checks"]
+                        if c["label"].startswith(("1a.", "1c.", "2a.", "2b.", "3.")) and not c["passed"]
+                    ]
+                    with st.expander(f"❌ {sid} — {data['name']}"):
+                        for c in failed_checks:
+                            st.error(f"**{c['label']}** — {c['detail']}")
+
+    # ── Tab 4: Export ─────────────────────────────────────────────────
     with tab_export:
-        # Summary table
+
+        # — Summary table —
         st.subheader("📋 Ringkasan Hasil Validasi")
         summary_rows = []
         for sid, data in sid_results.items():
@@ -692,7 +817,7 @@ if run_btn:
 
         st.divider()
 
-        # Export ke Dashboard Kantor
+        # — Export lolos ke Dashboard Kantor —
         st.subheader("📤 Export ke Dashboard Kantor")
         st.caption("Repayment Proceed: lolos 1a + 1b + 1c  |  Loan Request: lolos 1a + 1c + 2a + 2b + 3")
 
@@ -715,3 +840,47 @@ if run_btn:
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
                 use_container_width=True,
             )
+
+        st.divider()
+
+        # — Export revisi nasabah gagal —
+        st.subheader("📝 Export File Revisi (Nasabah Gagal)")
+        st.caption(
+            "File berisi **Sheet 1 — Alasan Gagal** (referensi) dan "
+            "**Sheet 2 — Data Transaksi** nasabah yang tidak lolos. "
+            "Perbaiki nilai di Sheet 2, lalu salin kembali ke Hasil_MNC dan upload ulang."
+        )
+
+        rv_col1, rv_col2 = st.columns(2)
+
+        with rv_col1:
+            rev_rep_buf, rev_rep_fname, n_gagal_rep = generate_revisi_repayment_excel(
+                df_sell, sid_results, op_data
+            )
+            if n_gagal_rep == 0:
+                st.info("✅ Tidak ada nasabah yang gagal Repayment.")
+            else:
+                st.download_button(
+                    label=f"⬇️ Revisi Repayment — {n_gagal_rep} nasabah gagal",
+                    data=rev_rep_buf,
+                    file_name=rev_rep_fname,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary",
+                )
+
+        with rv_col2:
+            rev_loan_buf, rev_loan_fname, n_gagal_loan = generate_revisi_loan_excel(
+                df_buy, sid_results, op_data, cl_data
+            )
+            if n_gagal_loan == 0:
+                st.info("✅ Tidak ada nasabah yang gagal Loan Request.")
+            else:
+                st.download_button(
+                    label=f"⬇️ Revisi Loan Request — {n_gagal_loan} nasabah gagal",
+                    data=rev_loan_buf,
+                    file_name=rev_loan_fname,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                    type="secondary",
+                )
