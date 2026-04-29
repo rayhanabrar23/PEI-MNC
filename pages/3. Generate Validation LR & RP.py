@@ -569,6 +569,7 @@ with st.expander("📖 Panduan Struktur File"):
     | 1 | Hasil_MNC | Didapat dari Generate TRX PEI DETAILS |
     | 2 | File OP | Unduh .txt dari I-Fast Web |
     | 3 | Credit Limit Nasabah | Unduh .txt dari I-Fast Web |
+    """)
 
 run_btn = st.button("▶ Jalankan Validasi", use_container_width=True, type="primary")
 
