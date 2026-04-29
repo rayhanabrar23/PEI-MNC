@@ -415,8 +415,8 @@ def generate_repayment_excel(df_sell, sid_results):
     for sid in passed_sids:
         rows      = df_sell[col(df_sell, SELL_SID).astype(str) == sid]
         total_vol = pd.to_numeric(col(rows, SELL_VOL), errors="coerce").abs().sum()
-        if total_vol > 0:
-            total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").abs().sum()
+        total_val = pd.to_numeric(col(rows, SELL_VAL), errors="coerce").abs().sum()
+        if total_vol > 0 and total_val > 0:
             sheet1_rows.append({"Participant Code": "EP", "SID Client": sid, "Repayment Value": total_val})
 
     sheet2_rows = []
@@ -444,7 +444,7 @@ def generate_loan_excel(df_buy, sid_results):
         rows      = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
         total_vol = pd.to_numeric(col(rows, BUY_VOL), errors="coerce").sum()
         total_val = pd.to_numeric(col(rows, BUY_VAL), errors="coerce").sum()
-        if total_vol > 0:
+        if total_vol > 0 and total_val > 0:
             sheet1_rows.append({"Participant Code": "EP", "SID Client": sid, "Loan Value": total_val})
 
     sheet2_rows = []
