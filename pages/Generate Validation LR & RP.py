@@ -11,12 +11,6 @@ st.set_page_config(
     page_icon="✅",
     layout="wide",
 )
-st.info(
-    "Sistem ini memproses transaksi nasabah PEI: "
-    "**Buy (Loan)** · **Sell (Repayment)** · "
-    "**Repayment Proceed** · **Loan Request**"
-)
-
 
 # ─────────────────────────────────────────────
 # CUSTOM CSS — Light Theme
@@ -692,7 +686,7 @@ def generate_loan_excel(df_buy, sid_results):
 # UI
 # ─────────────────────────────────────────────
 
-st.markdown("# 🔍 Validasi MNC")
+st.markdown("# Validasi MNC")
 st.markdown(
     '<p style="color:#5a6278;font-family:\'IBM Plex Mono\',monospace;font-size:0.85rem;">'
     'Sistem Validasi Repayment &amp; Loan Request</p>',
