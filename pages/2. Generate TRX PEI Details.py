@@ -122,6 +122,8 @@ if all(required_files):
 
             # ── 4a. LOAD & STANDARISASI ──────────────────────
             df_inv  = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
+            df_inv['stock_key'] = df_inv['stock_key'].astype(str).str.strip().str.upper()
+            df_inv['cid_key']   = df_inv['cid_key'].astype(str).str.strip()
             df_sid  = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
 
             # [FIX] Normalisasi df_sid sebelum dipakai sebagai key join ← TAMBAH DI SINI
@@ -162,6 +164,9 @@ if all(required_files):
 
             # ── 4b. VOLUME FORMULA ────────────────────────────
             if 'Volume_Formula' not in df_inv.columns:
+                df_inv['tot_vol'] = pd.to_numeric(df_inv['tot_vol'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
+                df_inv['_sign'] = df_inv['bors'].map({'B': 1, 'S': -1}).fillna(0)
+                df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
                 df_inv['_sign'] = df_inv['bors'].map({'B': 1, 'S': -1}).fillna(0)
                 df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
                 net_map = df_inv.groupby(['cid_key', 'stock_key'])['_signed_vol'].sum()
