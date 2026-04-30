@@ -344,7 +344,10 @@ if all(required_files):
             # ── 4g. LOAN REQUEST ──────────────────────────────
             loan_req_rows = []
             if not df_porto_all.empty and 'coll_vol' in df_porto_all.columns:
-                for _, row in df_porto_all.iterrows():
+                # ← TAMBAH: merge porto dengan risk_sub untuk dapat price & haircut
+                df_porto_risk = df_porto_all.merge(risk_sub, on='stock_key', how='left')
+
+                for _, row in df_porto_risk.iterrows():
                     vol = pd.to_numeric(row.get('coll_vol', 0), errors='coerce') or 0
                     if vol > 0:
                         price  = pd.to_numeric(row.get('price_key',  0), errors='coerce') or 0
