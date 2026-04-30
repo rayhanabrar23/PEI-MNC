@@ -57,7 +57,7 @@ def clean_num(df, extra_keys=None):
         num_keys += extra_keys
 
     def parse_number(s):
-        s = str(s).strip().replace('"', '')
+        s = str(s).strip().replace('"', '').replace('%', '')
         if s in ('', 'nan', 'None', '-'):
             return 0.0
         # Hapus koma sebagai separator ribuan (EN style: 1,000 atau 1,000.50)
