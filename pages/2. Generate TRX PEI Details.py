@@ -167,8 +167,6 @@ if all(required_files):
                 df_inv['tot_vol'] = pd.to_numeric(df_inv['tot_vol'].astype(str).str.replace(',', ''), errors='coerce').fillna(0)
                 df_inv['_sign'] = df_inv['bors'].map({'B': 1, 'S': -1}).fillna(0)
                 df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
-                df_inv['_sign'] = df_inv['bors'].map({'B': 1, 'S': -1}).fillna(0)
-                df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
                 net_map = df_inv.groupby(['cid_key', 'stock_key'])['_signed_vol'].sum()
                 df_inv['vol_net_total'] = df_inv.set_index(
                     ['cid_key', 'stock_key']).index.map(net_map)
