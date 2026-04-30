@@ -134,6 +134,8 @@ if all(required_files):
             )
             df_risk.columns = df_risk.columns.str.strip()
             df_risk = clean_num(df_risk)  # ← REVISI: bersihkan data kotor risk
+            # [FIX] normalisasi stock_key di df_risk
+            df_risk['stock_key'] = df_risk['stock_key'].astype(str).str.strip().str.upper()
 
             # ── FIX MARGIN BUY ──────────────────────────────────────────────────────────        
             # Urutan yang benar:
@@ -197,6 +199,8 @@ if all(required_files):
             if 'haircut_key' in df_risk.columns:
                 risk_sub = df_risk[['stock_key', 'avail_risk', 'haircut_key']].drop_duplicates('stock_key').copy()
 
+            # [FIX] normalisasi stock_key di risk_sub — wajib agar match dengan df_mbuy & df_msell
+            risk_sub['stock_key'] = risk_sub['stock_key'].astype(str).str.strip().str.upper()
             risk_lookup = risk_sub.set_index('stock_key').to_dict('index')
 
             # ── 4d. SHEET BUY ─────────────────────────────────
