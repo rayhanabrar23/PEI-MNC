@@ -132,20 +132,17 @@ if all(required_files):
             df_risk = clean_num(df_risk)  # ← REVISI: bersihkan data kotor risk
 
             # Margin Buy: txt pipe-separated
-            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={
-                'SID':        'sid_key',
-                'STOCK CODE': 'stock_key',
-            })
-            df_mbuy.columns = df_mbuy.columns.str.strip()
-            df_mbuy = clean_num(df_mbuy)  # ← REVISI: bersihkan data kotor margin buy
+            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str)
+            df_mbuy.columns = df_mbuy.columns.str.strip()  # strip DULU
+            df_mbuy['HAIRCUT'] = df_mbuy['HAIRCUT'].str.replace('%', '', regex=False).str.strip()  # hapus %
+            df_mbuy = df_mbuy.rename(columns={'SID': 'sid_key', 'STOCK CODE': 'stock_key'})  # baru rename
+            df_mbuy = clean_num(df_mbuy)
 
             # Margin Sell: txt pipe-separated
-            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={
-                'SID':        'sid_key',
-                'STOCK CODE': 'stock_key',
-            })
-            df_msell.columns = df_msell.columns.str.strip()
-            df_msell = clean_num(df_msell)  # ← REVISI: bersihkan data kotor margin sell
+            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str)
+            df_msell.columns = df_msell.columns.str.strip()  # strip DULU
+            df_msell = df_msell.rename(columns={'SID': 'sid_key', 'STOCK CODE': 'stock_key'})  # baru rename
+            df_msell = clean_num(df_msell)
 
             # ── 4b. VOLUME FORMULA ────────────────────────────
             if 'Volume_Formula' not in df_inv.columns:
