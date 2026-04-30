@@ -186,6 +186,15 @@ if all(required_files):
                     errors='coerce'
                 ).fillna(0)
 
+                # [FIX] Volume_Formula=0 pada BUY berarti tot_vol penuh (net buy)
+                # Isi ulang dari tot_vol untuk baris BUY yang Volume_Formula-nya 0
+                df_inv['tot_vol'] = pd.to_numeric(
+                    df_inv['tot_vol'].astype(str).str.replace(',', ''), errors='coerce'
+                ).fillna(0)
+
+                mask_buy_zero = (df_inv['bors'] == 'B') & (df_inv['Volume_Formula'] == 0)
+                df_inv.loc[mask_buy_zero, 'Volume_Formula'] = df_inv.loc[mask_buy_zero, 'tot_vol']
+
             if 'amt_pay' in df_inv.columns:
                 df_inv['amt_pay'] = pd.to_numeric(
                     df_inv['amt_pay'].astype(str).str.replace(',', ''),
