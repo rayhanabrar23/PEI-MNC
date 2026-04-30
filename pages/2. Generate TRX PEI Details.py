@@ -124,6 +124,10 @@ if all(required_files):
             df_inv  = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
             df_sid  = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
 
+            # [FIX] Normalisasi df_sid sebelum dipakai sebagai key join ← TAMBAH DI SINI
+            df_sid['sid_key'] = df_sid['sid_key'].astype(str).str.strip()
+            df_sid['cid_key'] = df_sid['cid_key'].astype(str).str.strip()
+
             # Risk Parameter: txt pipe-separated
             df_risk = find_and_rename(
                 pd.read_csv(file_risk, sep='|', dtype=str)
@@ -131,17 +135,27 @@ if all(required_files):
             df_risk.columns = df_risk.columns.str.strip()
             df_risk = clean_num(df_risk)  # ← REVISI: bersihkan data kotor risk
 
-            # Margin Buy: txt pipe-separated
+            # ── FIX MARGIN BUY ──────────────────────────────────────────────────────────        
+            # Urutan yang benar:
+            # 1) Baca  2) Strip nama kolom  3) Strip semua nilai string
+            # 4) Hapus '%' dari HAIRCUT  5) Rename  6) Normalisasi key  7) clean_num
             df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str)
-            df_mbuy.columns = df_mbuy.columns.str.strip()  # strip DULU
-            df_mbuy['HAIRCUT'] = df_mbuy['HAIRCUT'].str.replace('%', '', regex=False).str.strip()  # hapus %
-            df_mbuy = df_mbuy.rename(columns={'SID': 'sid_key', 'STOCK CODE': 'stock_key'})  # baru rename
-            df_mbuy = clean_num(df_mbuy)
+            df_mbuy.columns = df_mbuy.columns.str.strip()                               # [FIX] strip nama kolom
+            df_mbuy = df_mbuy.apply(lambda col: col.str.strip() if col.dtype == object else col)  # [FIX] strip semua nilai
+            if 'HAIRCUT' in df_mbuy.columns:
+                df_mbuy['HAIRCUT'] = df_mbuy['HAIRCUT'].str.replace('%', '', regex=False).str.strip()  # [FIX] hapus % SEBELUM clean_num
+            df_mbuy = df_mbuy.rename(columns={'SID': 'sid_key', 'STOCK CODE': 'stock_key'})  # [FIX] rename SEBELUM clean_num
+            df_mbuy['stock_key'] = df_mbuy['stock_key'].str.strip().str.upper()         # [FIX] normalisasi stock code
+            df_mbuy['sid_key']   = df_mbuy['sid_key'].str.strip()                       # [FIX] normalisasi SID
+            df_mbuy = clean_num(df_mbuy)                                                 # [FIX] clean_num TERAKHIR
 
-            # Margin Sell: txt pipe-separated
+            # ── FIX MARGIN SELL ──────────────────────────────────────────────────────────
             df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str)
-            df_msell.columns = df_msell.columns.str.strip()  # strip DULU
-            df_msell = df_msell.rename(columns={'SID': 'sid_key', 'STOCK CODE': 'stock_key'})  # baru rename
+            df_msell.columns = df_msell.columns.str.strip()                             # [FIX] strip nama kolom
+            df_msell = df_msell.apply(lambda col: col.str.strip() if col.dtype == object else col)  # [FIX] strip semua nilai
+            df_msell = df_msell.rename(columns={'SID': 'sid_key', 'STOCK CODE': 'stock_key'})       # [FIX] rename SEBELUM clean_num
+            df_msell['stock_key'] = df_msell['stock_key'].str.strip().str.upper()       # [FIX] normalisasi stock code
+            df_msell['sid_key']   = df_msell['sid_key'].str.strip()                     # [FIX] normalisasi SID
             df_msell = clean_num(df_msell)
 
             # ── 4b. VOLUME FORMULA ────────────────────────────
@@ -174,7 +188,7 @@ if all(required_files):
                 ).fillna(0)
 
             # ── 4c. FILTER NASABAH PEI ────────────────────────
-            pei_cids = set(df_sid['cid_key'].astype(str).str.strip())
+            pei_cids = set(df_sid['cid_key'])
 
             df_sid_unique = df_sid.drop_duplicates(subset='cid_key', keep='first')
             sid_lookup = df_sid_unique.set_index('cid_key')[['sid_key', 'name_key']].to_dict('index')
@@ -191,6 +205,9 @@ if all(required_files):
                 (df_inv['cid_key'].isin(pei_cids)) &
                 (df_inv['Volume_Formula'].abs() > 0)
             ].copy()
+
+            df_buy_inv['stock_key'] = df_buy_inv['stock_key'].astype(str).str.strip().str.upper()  # [FIX]
+            df_buy_inv['cid_key']   = df_buy_inv['cid_key'].astype(str).str.strip()  
 
             if 'sid_key' not in df_buy_inv.columns:
                 buy_merged = df_buy_inv.merge(
@@ -285,6 +302,9 @@ if all(required_files):
                 (df_inv['cid_key'].isin(pei_cids)) &
                 (df_inv['Volume_Formula'].abs() > 0)
             ].copy()
+
+            df_sell_inv['stock_key'] = df_sell_inv['stock_key'].astype(str).str.strip().str.upper()
+            df_sell_inv['cid_key']   = df_sell_inv['cid_key'].astype(str).str.strip()
 
             if 'sid_key' not in df_sell_inv.columns:
                 sell_merged = df_sell_inv.merge(
