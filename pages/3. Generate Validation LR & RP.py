@@ -243,7 +243,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             buy["rows"], BUY_AVQ, BUY_CP, BUY_HC
         )
 
-        # 1a
+        # ── 1a. Volume Sell ≤ Available Sell Quantity (dari Hasil_MNC) ──
         rep_1a_pass   = True
         rep_1a_detail = []
         for _, row in sell["rows"].iterrows():
@@ -259,7 +259,57 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "; ".join(rep_1a_detail) if rep_1a_detail else f"Total Volume Sell: {total_sell_vol:,.0f}"
         )
 
-        # 1b
+        # ── 1a-OP. Saham Sell ada & Volume ≤ Outstanding di OP File ──────
+        if not has_repayment:
+            add(
+                "1a-OP. Saham Sell Terverifikasi di OP File",
+                True,
+                "Tidak ada Repayment — check 1a-OP dilewati"
+            )
+        elif not op.get("stocks"):
+            # Nasabah tidak ditemukan di OP file sama sekali
+            add(
+                "1a-OP. Saham Sell Terverifikasi di OP File",
+                False,
+                f"SID {sid} tidak ditemukan di OP file — tidak ada posisi saham outstanding"
+            )
+        else:
+            op_stocks        = op["stocks"]   # {"BBCA": 500.0, ...}
+            op_1a_pass       = True
+            op_1a_detail     = []
+            op_1a_ok_detail  = []
+
+            for _, row in sell["rows"].iterrows():
+                stk = str(row.iloc[SELL_STOCK]).strip()
+                vol = abs(pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0)
+
+                if stk not in op_stocks:
+                    op_1a_pass = False
+                    op_1a_detail.append(f"{stk}: tidak ada di OP file")
+                elif vol > op_stocks[stk]:
+                    op_1a_pass = False
+                    op_1a_detail.append(
+                        f"{stk}: Vol Sell {vol:,.0f} > Outstanding OP {op_stocks[stk]:,.0f}"
+                    )
+                else:
+                    op_1a_ok_detail.append(
+                        f"{stk}: Vol Sell {vol:,.0f} ✓ (OP: {op_stocks[stk]:,.0f})"
+                    )
+
+            if op_1a_pass:
+                detail_msg = "; ".join(op_1a_ok_detail) if op_1a_ok_detail else "Semua saham terverifikasi di OP file"
+            else:
+                detail_msg = "; ".join(op_1a_detail)
+                if op_1a_ok_detail:
+                    detail_msg += " || OK: " + "; ".join(op_1a_ok_detail)
+
+            add(
+                "1a-OP. Saham Sell Terverifikasi di OP File",
+                op_1a_pass,
+                detail_msg
+            )
+
+        # ── 1b. Total Repayment Value ≤ Total Loan Value ─────────────────
         if not has_loan_request:
             rep_1b_pass   = True
             rep_1b_detail = "Pure repayment tanpa Loan Request — check 1b dilewati"
@@ -271,7 +321,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             )
         add("1b. Total Repayment Value ≤ Total Loan Value", rep_1b_pass, rep_1b_detail)
 
-        # 1c
+        # ── 1c. Rasio Repayment < 65% ─────────────────────────────────────
         if not has_repayment:
             rep_1c_pass   = True
             rep_1c_detail = "Tidak ada Repayment — check 1c dilewati"
@@ -301,7 +351,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                 rep_1c_detail = "Collateral = 0 sementara Loan masih ada — Rasio tidak terhitung (∞)"
         add("1c. Rasio Repayment < 65%", rep_1c_pass, rep_1c_detail)
 
-        # 2a
+        # ── 2a. Volume Buy ≤ Available Quantity ───────────────────────────
         loan_2a_pass   = True
         loan_2a_detail = []
         for _, row in buy["rows"].iterrows():
@@ -317,7 +367,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
             "; ".join(loan_2a_detail) if loan_2a_detail else f"Total Volume Buy: {total_buy_vol:,.0f}"
         )
 
-        # 2b
+        # ── 2b. Rasio Loan Request < 65% ──────────────────────────────────
         if not has_loan_request:
             loan_2b_pass   = True
             loan_2b_detail = "Tidak ada Loan Request — check 2b dilewati"
@@ -346,7 +396,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
                 loan_2b_detail = "Collateral = 0 sementara ada Loan — Rasio tidak terhitung (∞)"
         add("2b. Rasio Loan Request < 65%", loan_2b_pass, loan_2b_detail)
 
-        # 3
+        # ── 3. Credit Limit Nasabah ────────────────────────────────────────
         if not has_loan_request:
             cl_nasabah_pass   = True
             cl_nasabah_detail = "Tidak ada Loan Request — check 3 dilewati"
@@ -363,7 +413,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 
         results[sid] = sid_results
 
-    # 4. Global
+    # ── 4. Global Credit Limit Partisipan ────────────────────────────────
     cl_partisipan_pass = (credit_limit_partisipan + global_total_sell_value) > global_total_buy_value
     global_result = {
         "passed":     cl_partisipan_pass,
@@ -386,7 +436,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan):
 def lolos_repayment(sid_data):
     if not sid_data.get("has_repayment", False):
         return False
-    repayment_labels = {"1a.", "1b.", "1c."}
+    repayment_labels = {"1a.", "1a-OP.", "1b.", "1c."}
     return all(
         c["passed"]
         for c in sid_data["checks"]
@@ -396,7 +446,7 @@ def lolos_repayment(sid_data):
 def lolos_loan(sid_data):
     if not sid_data.get("has_loan_request", False):
         return False
-    loan_labels = {"1a.", "1c.", "2a.", "2b.", "3."}
+    loan_labels = {"1a.", "1a-OP.", "1c.", "2a.", "2b.", "3."}
     return all(
         c["passed"]
         for c in sid_data["checks"]
@@ -478,7 +528,7 @@ def generate_revisi_repayment_excel(df_sell, sid_results, op_data):
         data = sid_results[sid]
         op   = op_data.get(sid, {})
         for check in data["checks"]:
-            if check["label"].startswith(("1a.", "1b.", "1c.")) and not check["passed"]:
+            if check["label"].startswith(("1a.", "1a-OP.", "1b.", "1c.")) and not check["passed"]:
                 alasan_rows.append({
                     "SID"             : sid,
                     "Nama"            : data["name"],
@@ -487,6 +537,7 @@ def generate_revisi_repayment_excel(df_sell, sid_results, op_data):
                     "Loan Existing"   : op.get("loan_existing", "-"),
                     "Accrued Interest": op.get("accrued_interest", "-"),
                     "Volume Existing" : op.get("volume_existing", "-"),
+                    "Saham OP"        : ", ".join(op.get("stocks", {}).keys()) or "-",
                 })
 
     df_failed_sell = df_sell[
@@ -514,7 +565,7 @@ def generate_revisi_loan_excel(df_buy, sid_results, op_data, cl_data):
         op   = op_data.get(sid, {})
         cl   = cl_data.get(sid, {})
         for check in data["checks"]:
-            if check["label"].startswith(("1a.", "1c.", "2a.", "2b.", "3.")) and not check["passed"]:
+            if check["label"].startswith(("1a.", "1a-OP.", "1c.", "2a.", "2b.", "3.")) and not check["passed"]:
                 alasan_rows.append({
                     "SID"             : sid,
                     "Nama"            : data["name"],
@@ -623,7 +674,8 @@ with st.expander("📖 Panduan Validasi"):
     st.markdown("""
     | # | Cek | Keterangan |
     |---|-----|------------|
-    | 1a | Volume Sell ≤ Available Sell Qty | Per baris di Sell sheet |
+    | 1a | Volume Sell ≤ Available Sell Qty | Per baris di Sell sheet (dari Hasil_MNC) |
+    | 1a-OP | Saham Sell ada & Vol ≤ Outstanding di OP File | Cross-check ke OP file — saham harus ada & vol tidak melebihi posisi outstanding |
     | 1b | Total Repayment Value ≤ Total Loan Value | Hanya jika ada Loan Request |
     | 1c | Rasio Repayment < 65% | (Loan Existing − Repayment + Accrued) / Collateral |
     | 2a | Volume Buy ≤ Available Quantity | Per baris di Buy sheet |
@@ -631,8 +683,8 @@ with st.expander("📖 Panduan Validasi"):
     | 3  | Credit Limit Nasabah | (Avail Limit + Sell Value) > Loan Diajukan |
     | 4  | Credit Limit Partisipan | Global: (CL Partisipan + Total Sell) > Total Loan |
 
-    > **Lolos Repayment:** 1a + 1b + 1c  
-    > **Lolos Loan Request:** 1a + 1c + 2a + 2b + 3
+    > **Lolos Repayment:** 1a + **1a-OP** + 1b + 1c  
+    > **Lolos Loan Request:** 1a + **1a-OP** + 1c + 2a + 2b + 3
     """)
 
 with st.expander("📖 Panduan Struktur File"):
@@ -763,7 +815,7 @@ if run_btn:
                 for sid, data in gagal_rep:
                     failed_checks = [
                         c for c in data["checks"]
-                        if c["label"].startswith(("1a.", "1b.", "1c.")) and not c["passed"]
+                        if c["label"].startswith(("1a.", "1a-OP.", "1b.", "1c.")) and not c["passed"]
                     ]
                     with st.expander(f"❌ {sid} — {data['name']}"):
                         for c in failed_checks:
@@ -777,7 +829,7 @@ if run_btn:
                 for sid, data in gagal_loan:
                     failed_checks = [
                         c for c in data["checks"]
-                        if c["label"].startswith(("1a.", "1c.", "2a.", "2b.", "3.")) and not c["passed"]
+                        if c["label"].startswith(("1a.", "1a-OP.", "1c.", "2a.", "2b.", "3.")) and not c["passed"]
                     ]
                     with st.expander(f"❌ {sid} — {data['name']}"):
                         for c in failed_checks:
@@ -814,7 +866,7 @@ if run_btn:
 
         # — Export lolos ke Dashboard Kantor —
         st.subheader("📤 Export ke Dashboard Kantor")
-        st.caption("Repayment Proceed: lolos 1a + 1b + 1c  |  Loan Request: lolos 1a + 1c + 2a + 2b + 3")
+        st.caption("Repayment Proceed: lolos 1a + 1a-OP + 1b + 1c  |  Loan Request: lolos 1a + 1a-OP + 1c + 2a + 2b + 3")
 
         dl_col1, dl_col2 = st.columns(2)
         with dl_col1:
