@@ -37,17 +37,12 @@ def find_and_rename(df):
     return df.rename(columns=rename_dict)
 
 
-# ── REVISI: clean_num sekarang bisa membedakan titik desimal vs titik ribuan ──
 def clean_num(df, extra_keys=None):
     """
     Membersihkan kolom numerik dari format angka kotor:
     - Koma sebagai separator ribuan (EN): "1,000" → 1000
     - Titik sebagai separator ribuan (ID): "1.000" → 1000
     - Kombinasi keduanya: "1,000.50" → 1000.50
-
-    Logika deteksi titik ribuan vs desimal:
-    - Jika pola cocok "ddd.ddd" (tepat 3 digit setelah titik) → titik ribuan → hapus titik
-    - Selain itu → titik desimal → biarkan
     """
     import re
 
@@ -60,16 +55,9 @@ def clean_num(df, extra_keys=None):
         s = str(s).strip().replace('"', '').replace('%', '')
         if s in ('', 'nan', 'None', '-'):
             return 0.0
-        # Hapus koma sebagai separator ribuan (EN style: 1,000 atau 1,000.50)
         s = s.replace(',', '')
-        # Deteksi titik sebagai separator ribuan (ID style: 1.000 atau 300.000)
-        # Ciri khasnya: titik diikuti tepat 3 digit dan tidak ada karakter angka setelah itu
-        # Contoh: "300.000" → kotor → jadi 300000
-        # Tapi "300.5" atau "1234.56" → desimal → biarkan
         if re.fullmatch(r'\d{1,3}(\.\d{3})+', s):
-            # Pola ribuan ID murni tanpa desimal: hapus semua titik
             s = s.replace('.', '')
-        # Setelah ini, sisa titik adalah pemisah desimal → pd.to_numeric bisa handle
         return pd.to_numeric(s, errors='coerce') or 0.0
 
     for c in df.columns:
@@ -124,32 +112,46 @@ if all(required_files):
             df_inv  = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
             df_sid  = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
 
-            # Risk Parameter: txt pipe-separated
-            df_risk = find_and_rename(
-                pd.read_csv(file_risk, sep='|', dtype=str)
-            )
-            df_risk.columns = df_risk.columns.str.strip()
-            df_risk = clean_num(df_risk)  # ← REVISI: bersihkan data kotor risk
+            # Standarisasi key kolom
+            df_inv['stock_key'] = df_inv['stock_key'].astype(str).str.strip().str.upper()
+            df_inv['cid_key']   = df_inv['cid_key'].astype(str).str.strip()
+            df_sid['cid_key']   = df_sid['cid_key'].astype(str).str.strip()
+            df_sid['sid_key']   = df_sid['sid_key'].astype(str).str.strip()
 
-            # Margin Buy: txt pipe-separated
+            # Risk Parameter
+            df_risk = find_and_rename(pd.read_csv(file_risk, sep='|', dtype=str))
+            df_risk.columns = df_risk.columns.str.strip()
+            df_risk = clean_num(df_risk)
+            df_risk['stock_key'] = df_risk['stock_key'].astype(str).str.strip().str.upper()
+
+            # Margin Buy
             df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={
                 'SID':        'sid_key',
                 'STOCK CODE': 'stock_key',
             })
             df_mbuy.columns = df_mbuy.columns.str.strip()
-            df_mbuy = clean_num(df_mbuy)  # ← REVISI: bersihkan data kotor margin buy
+            df_mbuy = clean_num(df_mbuy)
+            df_mbuy['stock_key'] = df_mbuy['stock_key'].astype(str).str.strip().str.upper()
+            df_mbuy['sid_key']   = df_mbuy['sid_key'].astype(str).str.strip()
 
-            # Margin Sell: txt pipe-separated
+            # Margin Sell
             df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={
                 'SID':        'sid_key',
                 'STOCK CODE': 'stock_key',
             })
             df_msell.columns = df_msell.columns.str.strip()
-            df_msell = clean_num(df_msell)  # ← REVISI: bersihkan data kotor margin sell
+            df_msell = clean_num(df_msell)
+            df_msell['stock_key'] = df_msell['stock_key'].astype(str).str.strip().str.upper()
+            df_msell['sid_key']   = df_msell['sid_key'].astype(str).str.strip()
 
             # ── 4b. VOLUME FORMULA ────────────────────────────
+            # FIX: Volume_Formula konsisten dengan File 0 (Invoice Netting)
+            # Pakai tot_vol aktual per baris, bukan vol_net gabungan
             if 'Volume_Formula' not in df_inv.columns:
                 df_inv['_sign'] = df_inv['bors'].map({'B': 1, 'S': -1}).fillna(0)
+                df_inv['tot_vol'] = pd.to_numeric(
+                    df_inv['tot_vol'].astype(str).str.replace(',', ''), errors='coerce'
+                ).fillna(0)
                 df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
                 net_map = df_inv.groupby(['cid_key', 'stock_key'])['_signed_vol'].sum()
                 df_inv['vol_net_total'] = df_inv.set_index(
@@ -157,10 +159,11 @@ if all(required_files):
 
                 def calc_vol_formula(row):
                     total = row['vol_net_total']
+                    vol   = row['tot_vol']        # FIX: pakai tot_vol, bukan total_net
                     if total < 0:
-                        return row['tot_vol'] * -1 if row['bors'] == 'S' else 0
+                        return -vol if row['bors'] == 'S' else 0
                     elif total > 0:
-                        return row['tot_vol'] if row['bors'] == 'B' else 0
+                        return vol if row['bors'] == 'B' else 0
                     return 0
 
                 df_inv['Volume_Formula'] = df_inv.apply(calc_vol_formula, axis=1)
@@ -204,8 +207,6 @@ if all(required_files):
                     df_mbuy, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
                 )
 
-            buy_merged['stock_key'] = buy_merged['stock_key'].astype(str).str.strip().str.upper()
-            risk_sub['stock_key']   = risk_sub['stock_key'].astype(str).str.strip().str.upper()
             buy_merged = buy_merged.merge(risk_sub, on='stock_key', how='left')
 
             buy_out = pd.DataFrame()
@@ -243,6 +244,8 @@ if all(required_files):
             # ── 4f. PORTOFOLIO KOLATERAL ──────────────────────
             porto_sheets = {}
             df_porto_all = pd.DataFrame()
+            # FIX: porto_coll_lookup sekarang key (cid, stock) → vol
+            # ini akan dipakai juga untuk filter di export Repayment Proceed
             porto_coll_lookup = {}
 
             if file_ep is not None:
@@ -277,10 +280,17 @@ if all(required_files):
                 if porto_rows:
                     df_porto_all = pd.DataFrame(porto_rows)
                     df_porto_all = df_porto_all.merge(
-                        df_sid[['cid_key', 'name_key']].rename(columns={'cid_key': 'CID', 'name_key': 'Name'}),
+                        df_sid[['cid_key', 'name_key']].rename(
+                            columns={'cid_key': 'CID', 'name_key': 'Name'}
+                        ),
                         on='CID', how='left'
                     )
                     porto_sheets = dict(tuple(df_porto_all.groupby('CID')))
+
+            # Simpan porto_coll_lookup di session_state agar bisa diakses File 2
+            # (jika dijalankan dalam multipage app)
+            st.session_state['porto_coll_lookup'] = porto_coll_lookup
+            st.session_state['sid_cid_map'] = df_sid.set_index('sid_key')['cid_key'].to_dict()
 
             # ── 4e. SHEET SELL ────────────────────────────────
             df_sell_inv = df_inv[
@@ -298,8 +308,6 @@ if all(required_files):
                     df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
                 )
 
-            sell_merged['stock_key'] = sell_merged['stock_key'].astype(str).str.strip().str.upper()
-            risk_sub['stock_key']    = risk_sub['stock_key'].astype(str).str.strip().str.upper()
             sell_merged = sell_merged.merge(risk_sub, on='stock_key', how='left')
 
             sell_out = pd.DataFrame()
@@ -308,10 +316,10 @@ if all(required_files):
             for col in ['REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY',
                         'AVAILABLE SELL QUANTITY', 'CLOSING PRICE', 'AVAILABLE SELL VALUE']:
                 sell_out[col] = sell_merged[col] if col in sell_merged.columns else 0
-            sell_out['B/S']   = 'S'
-            sell_out['CID']   = sell_merged['cid_key']
-            sell_out['Name']  = sell_merged.get('name_key', '')
-            sell_out['Stock'] = sell_merged['stock_key']
+            sell_out['B/S']    = 'S'
+            sell_out['CID']    = sell_merged['cid_key']
+            sell_out['Name']   = sell_merged.get('name_key', '')
+            sell_out['Stock']  = sell_merged['stock_key']
             sell_out['Volume'] = sell_merged['Volume_Formula'].abs()
             sell_out['Value']  = sell_merged.apply(
                 lambda r: r.get('AVAILABLE SELL VALUE', r.get('amt_pay', 0))
@@ -344,7 +352,6 @@ if all(required_files):
             # ── 4g. LOAN REQUEST ──────────────────────────────
             loan_req_rows = []
             if not df_porto_all.empty and 'coll_vol' in df_porto_all.columns:
-                # ← TAMBAH: merge porto dengan risk_sub untuk dapat price & haircut
                 df_porto_risk = df_porto_all.merge(risk_sub, on='stock_key', how='left')
 
                 for _, row in df_porto_risk.iterrows():
@@ -476,8 +483,10 @@ if all(required_files):
                         Total_Coll_Value=('coll_value', 'sum')
                     ).reset_index()
                     summary_porto['Total_Coll_Value_Rp'] = summary_porto['Total_Coll_Value'].apply(fmt_rp)
-                    st.dataframe(summary_porto[['CID', 'Name', 'Jumlah_Saham', 'Total_Coll_Value_Rp']],
-                                 use_container_width=True)
+                    st.dataframe(
+                        summary_porto[['CID', 'Name', 'Jumlah_Saham', 'Total_Coll_Value_Rp']],
+                        use_container_width=True
+                    )
 
         if not df_loan_req.empty:
             with tab_objs[idx]:
@@ -502,7 +511,10 @@ if all(required_files):
         st.exception(e)
 
 else:
-    st.warning("⬆️ Upload 6 file wajib (Netting Invoice, SID Client, Risk Parameter, Margin Buy, Margin Sell, Outstanding Position) untuk memulai.")
+    st.warning(
+        "⬆️ Upload 6 file wajib (Netting Invoice, SID Client, Risk Parameter, "
+        "Margin Buy, Margin Sell, Outstanding Position) untuk memulai."
+    )
 
     with st.expander("📖 Panduan Struktur File"):
         st.markdown("""
