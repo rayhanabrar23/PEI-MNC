@@ -903,7 +903,7 @@ if run_btn:
     if not cl_file:      errors.append("File Credit Limit belum diupload.")
     if not cp_file:      errors.append("File Closing Price belum diupload.")
     if not rp_file:      errors.append("File RiskParameter belum diupload.")
-    if not lr_file:      errors.append("File LR belum diupload.")
+    if not lr_file:      errors.append("File LR (Loan belum settled) belum diupload.")
     if not rp_txn_file:  errors.append("File RP (Repayment belum settled) belum diupload.")
 
     if errors:
