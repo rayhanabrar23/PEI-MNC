@@ -133,7 +133,7 @@ with col_u3:
     file_ep     = st.file_uploader("6. Outstanding Position (.txt)", type=['txt'])
 
 with col_u4:
-    file_price = st.file_uploader("7. File Harga Saham (xlsx)", type=['xlsx'],
+    file_price = st.file_uploader("7. Closing Price (xlsx)", type=['xlsx'],
                                    help="File Excel dengan kolom STK_CODE dan STK_CLOS (Closing Price)")
 
 # ─────────────────────────────────────────────
