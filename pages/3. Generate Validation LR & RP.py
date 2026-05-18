@@ -900,8 +900,11 @@ if run_btn:
         except Exception as ex:
             st.error(f"Gagal membaca Credit Limit file: {ex}")
             st.stop()
-
+            
+        cl = cl_data.get(sid, {"available_limit": 0, "name": sid})
+        st.write(f"DEBUG {sid} cl:", cl)
         st.write("DEBUG ANTM closing price:", closing_prices.get("ANTM"))
+        
         try:
             closing_prices = load_closing_price(cp_file)
         except Exception as ex:
