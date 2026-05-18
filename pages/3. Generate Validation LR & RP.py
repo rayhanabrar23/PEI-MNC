@@ -78,7 +78,7 @@ def parse_op_file(content: str):
                 "accrued_interest": accrued_interest,
                 "volume_existing":  0.0,
                 "name":             parts[4].strip() if len(parts) > 4 else sid,
-                "stocks":           {},   # stock → lot
+                "stocks":           {},
             }
         elif parts[0] == "1":
             if len(parts) < 5:
@@ -131,10 +131,6 @@ def parse_credit_limit_file(content: str):
 
 
 def parse_lr_file(content: str) -> dict:
-    """
-    Parse LR file. Baris 0: C=SID (idx 2), H=nilai LR (idx 7).
-    Return: {sid: total_lr_value}  (sum semua LR per SID)
-    """
     result = {}
     for line in content.strip().splitlines():
         line = line.strip()
@@ -154,10 +150,6 @@ def parse_lr_file(content: str) -> dict:
 
 
 def parse_rp_file(content: str) -> dict:
-    """
-    Parse RP file. Baris 0: C=SID (idx 2), H=nilai RP (idx 7).
-    Return: {sid: total_rp_value}  (sum semua RP per SID)
-    """
     result = {}
     for line in content.strip().splitlines():
         line = line.strip()
@@ -186,11 +178,6 @@ def load_closing_price(uploaded_file) -> dict:
     return result
 
 def load_risk_parameter(uploaded_file) -> dict:
-    """
-    Load haircut dari RiskParameter txt.
-    Format: StockCode|StockName|Haircut|AvailableQuantity
-    Return: {stock_code: haircut_decimal}  (e.g. 5% → 0.05)
-    """
     result = {}
     content = uploaded_file.read().decode("utf-8", errors="replace")
     uploaded_file.seek(0)
@@ -203,7 +190,7 @@ def load_risk_parameter(uploaded_file) -> dict:
             continue
         code = parts[0].strip()
         try:
-            hc = float(parts[2]) / 100.0  # sudah dalam %, konversi ke desimal
+            hc = float(parts[2]) / 100.0
         except Exception:
             hc = 0.0
         result[code] = hc
@@ -248,15 +235,10 @@ BUY_VAL    = 14
 RATIO_THRESHOLD = 0.65
 
 # ─────────────────────────────────────────────
-# COLLATERAL CALCULATOR (FORMULA BARU)
+# COLLATERAL CALCULATOR
 # ─────────────────────────────────────────────
 
 def calc_collateral_from_op(op_stocks: dict, closing_prices: dict, risk_params: dict) -> tuple:
-    """
-    Hitung collateral value dari posisi existing di OP file.
-    CV = Σ (qty × closing_price × (1 - haircut))
-    Return: (total_collateral, detail_list)
-    """
     total  = 0.0
     detail = []
     for stock, qty in op_stocks.items():
@@ -275,10 +257,6 @@ def calc_collateral_from_op(op_stocks: dict, closing_prices: dict, risk_params: 
 
 
 def calc_ratio_baru(loan_existing, accrued_interest, lr_value, rp_value, collateral):
-    """
-    Formula rasio baru:
-    Rasio = (Loan Existing + Accrued Interest + LR belum settled - RP belum settled) / Collateral
-    """
     numerator = loan_existing + accrued_interest + lr_value - rp_value
     if collateral > 0:
         return numerator / collateral, numerator
@@ -286,10 +264,6 @@ def calc_ratio_baru(loan_existing, accrued_interest, lr_value, rp_value, collate
 
 
 def calc_max_loan_baru(loan_existing, accrued_interest, lr_existing, rp_existing, collateral, threshold=0.65):
-    """
-    Max loan aman dengan formula baru:
-    max_loan = collateral × threshold - (loan_existing + accrued_interest + lr_existing - rp_existing)
-    """
     current_numerator = loan_existing + accrued_interest + lr_existing - rp_existing
     max_loan = collateral * threshold - current_numerator
     return max(max_loan, 0)
@@ -338,7 +312,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         name             = op.get("name") or cl.get("name") or sid
         op_stocks        = op.get("stocks", {})
 
-        # LR dan RP belum settled dari file
         lr_value = lr_data.get(sid, 0.0)
         rp_value = rp_data.get(sid, 0.0)
 
@@ -350,7 +323,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         has_repayment    = total_sell_vol > 0
         has_loan_request = total_buy_vol  > 0
 
-        # Collateral dari posisi existing (OP × Closing Price × (1 - HC))
         collateral_existing, coll_detail = calc_collateral_from_op(
             op_stocks, closing_prices, risk_params
         )
@@ -379,11 +351,8 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
 
         # ── 1a. Volume Sell ≤ Available Sell Quantity ──────────────
         if repayment_skipped_no_loan:
-            add(
-                "1a. Volume Sell ≤ Available Sell Quantity",
-                True,
-                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan"
-            )
+            add("1a. Volume Sell ≤ Available Sell Quantity", True,
+                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan")
         else:
             rep_1a_pass   = True
             rep_1a_detail = []
@@ -402,24 +371,18 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
 
         # ── 1a-OP. Saham Sell terverifikasi di OP File ────────────
         if repayment_skipped_no_loan:
-            add(
-                "1a-OP. Saham Sell Terverifikasi di OP File",
-                True,
-                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan"
-            )
+            add("1a-OP. Saham Sell Terverifikasi di OP File", True,
+                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan")
         elif not has_repayment:
             add("1a-OP. Saham Sell Terverifikasi di OP File", True, "Tidak ada Repayment")
         elif not op_stocks:
-            add(
-                "1a-OP. Saham Sell Terverifikasi di OP File",
-                False,
-                f"SID {sid} tidak ditemukan di OP file"
-            )
+            add("1a-OP. Saham Sell Terverifikasi di OP File", False,
+                f"SID {sid} tidak ditemukan di OP file")
         else:
             op_1a_pass      = True
             op_1a_detail    = []
             op_1a_ok_detail = []
-            op_1a_adjusted  = []  # tracking saham yang di-adjust
+            op_1a_adjusted  = []
 
             for _, row in sell["rows"].iterrows():
                 stk = str(row.iloc[SELL_STOCK]).strip()
@@ -429,13 +392,9 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
                     op_1a_pass = False
                     op_1a_detail.append(f"{stk}: tidak ada di OP file")
                 elif vol > op_stocks[stk]:
-                    # AUTO-ADJUST: potong ke maks OP, tandai sebagai adjusted
                     avail = op_stocks[stk]
-                    op_1a_adjusted.append(
-                        f"{stk}: {vol:,.0f} → {avail:,.0f} (dipotong sesuai OP)"
-                    )
+                    op_1a_adjusted.append(f"{stk}: {vol:,.0f} → {avail:,.0f} (dipotong sesuai OP)")
                     op_1a_ok_detail.append(f"{stk}: {avail:,.0f} ✓ (adjusted)")
-                    # Update volume di df_sell supaya downstream pakai angka yang sudah dipotong
                     df_sell.loc[
                         (col(df_sell, SELL_SID).astype(str) == sid) &
                         (col(df_sell, SELL_STOCK).astype(str).str.strip() == stk),
@@ -460,32 +419,23 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
 
         # ── 1b. Total Repayment Value ≤ Total Loan Value ──────────
         if repayment_skipped_no_loan:
-            add(
-                "1b. Total Repayment Value ≤ Total Loan Value",
-                True,
-                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan"
-            )
+            add("1b. Total Repayment Value ≤ Total Loan Value", True,
+                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan")
         elif not has_loan_request:
             add("1b. Total Repayment Value ≤ Total Loan Value", True,
                 "Pure repayment tanpa Loan Request — check 1b dilewati")
         else:
-            rep_1b_pass   = total_sell_val <= total_buy_val
+            rep_1b_pass = total_sell_val <= total_buy_val
             add("1b. Total Repayment Value ≤ Total Loan Value", rep_1b_pass,
                 f"Total Sell Value: {fmt_rp(total_sell_val)} | Total Buy Value: {fmt_rp(total_buy_val)}")
 
-        # ── 1c. Rasio Repayment (FORMULA BARU) ────────────────────
-        # Rasio = (Loan Existing + Accrued Interest + LR - RP) / Collateral
-        # Setelah repayment: LR = lr_existing (tidak berubah), RP = rp_existing + sell_val (RP bertambah)
+        # ── 1c. Rasio Repayment ────────────────────────────────────
         if repayment_skipped_no_loan:
-            add(
-                "1c. Rasio Repayment < 65%",
-                True,
-                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan"
-            )
+            add("1c. Rasio Repayment < 65%", True,
+                "⏭ Dilewati — Existing Loan = 0, repayment tidak diperlukan")
         elif not has_repayment:
             add("1c. Rasio Repayment < 65%", True, "Tidak ada Repayment — check 1c dilewati")
         else:
-            # Setelah repayment: RP bertambah sebesar sell_val
             rp_after_repayment = rp_value + total_sell_val
             ratio_rep, num_rep = calc_ratio_baru(
                 loan_existing, accrued_interest, lr_value, rp_after_repayment, collateral_existing
@@ -523,8 +473,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
             "; ".join(loan_2a_detail) if loan_2a_detail else f"Total Volume Buy: {total_buy_vol:,.0f}"
         )
 
-        # ── 2b. Rasio Loan Request < 65% (FORMULA BARU) ───────────
-        # Setelah LR baru: LR bertambah sebesar buy_val, RP bertambah sell_val
+        # ── 2b. Rasio Loan Request < 65% ──────────────────────────
         if not has_loan_request:
             add("2b. Rasio Loan Request < 65%", True,
                 "Tidak ada Loan Request — check 2b dilewati")
@@ -567,8 +516,8 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         if not has_loan_request:
             add("3. Credit Limit Nasabah", True, "Tidak ada Loan Request — check 3 dilewati")
         else:
-            effective_limit   = available_limit + total_sell_val
-            cl_nasabah_pass   = effective_limit > total_buy_val
+            effective_limit = available_limit + total_sell_val
+            cl_nasabah_pass = effective_limit > total_buy_val
             add("3. Credit Limit Nasabah", cl_nasabah_pass,
                 f"Avail Limit: {fmt_rp(available_limit)} + Sell: {fmt_rp(total_sell_val)} = "
                 f"{fmt_rp(effective_limit)} | Loan Diajukan: {fmt_rp(total_buy_val)}")
@@ -986,28 +935,28 @@ if run_btn:
             st.write("stocks in OP:", op_data[sample_sid].get("stocks", {}))
             st.write("closing_prices sample (5):", dict(list(closing_prices.items())[:5]))
             st.write("risk_params sample (5):", dict(list(risk_params.items())[:5]))
-            
-    total_sids           = len(sid_results)
-    total_pass_rep       = sum(1 for v in sid_results.values() if lolos_repayment(v))
-    total_pass_loan      = sum(1 for v in sid_results.values() if lolos_loan(v))
-    total_fail_rep       = sum(1 for v in sid_results.values()
-                               if v.get("has_repayment") and not v.get("repayment_skipped_no_loan")
-                               and not lolos_repayment(v))
-    total_fail_loan      = sum(1 for v in sid_results.values()
-                               if v.get("has_loan_request") and not lolos_loan(v))
-    total_skip_no_loan   = sum(1 for v in sid_results.values() if v.get("repayment_skipped_no_loan"))
-    global_pass          = global_result["passed"]
+
+    total_sids         = len(sid_results)
+    total_pass_rep     = sum(1 for v in sid_results.values() if lolos_repayment(v))
+    total_pass_loan    = sum(1 for v in sid_results.values() if lolos_loan(v))
+    total_fail_rep     = sum(1 for v in sid_results.values()
+                             if v.get("has_repayment") and not v.get("repayment_skipped_no_loan")
+                             and not lolos_repayment(v))
+    total_fail_loan    = sum(1 for v in sid_results.values()
+                             if v.get("has_loan_request") and not lolos_loan(v))
+    total_skip_no_loan = sum(1 for v in sid_results.values() if v.get("repayment_skipped_no_loan"))
+    global_pass        = global_result["passed"]
 
     m1, m2, m3, m4, m5, m6, m7 = st.columns(7)
-    m1.metric("Total Nasabah",        total_sids)
-    m2.metric("Lolos Repayment",      total_pass_rep)
-    m3.metric("Lolos Loan",           total_pass_loan)
-    m4.metric("Gagal Repayment",      total_fail_rep,
+    m1.metric("Total Nasabah",   total_sids)
+    m2.metric("Lolos Repayment", total_pass_rep)
+    m3.metric("Lolos Loan",      total_pass_loan)
+    m4.metric("Gagal Repayment", total_fail_rep,
               delta=f"-{total_fail_rep}"  if total_fail_rep  else None, delta_color="inverse")
-    m5.metric("Gagal Loan",           total_fail_loan,
+    m5.metric("Gagal Loan",      total_fail_loan,
               delta=f"-{total_fail_loan}" if total_fail_loan else None, delta_color="inverse")
-    m6.metric("Skip (Loan=0)",        total_skip_no_loan)
-    m7.metric("CL Partisipan",        "✅ LOLOS" if global_pass else "❌ GAGAL")
+    m6.metric("Skip (Loan=0)",   total_skip_no_loan)
+    m7.metric("CL Partisipan",   "✅ LOLOS" if global_pass else "❌ GAGAL")
 
     st.divider()
 
@@ -1032,14 +981,13 @@ if run_btn:
             l_pass  = lolos_loan(data)
             skipped = data.get("repayment_skipped_no_loan")
 
-            r_icon  = "⏭ R (Loan=0)" if skipped else ("✅ R" if r_pass else "❌ R")
-            l_icon  = "✅ L" if l_pass else "❌ L"
+            r_icon   = "⏭ R (Loan=0)" if skipped else ("✅ R" if r_pass else "❌ R")
+            l_icon   = "✅ L" if l_pass else "❌ L"
             expanded = not (r_pass and l_pass) and not skipped
 
             with st.expander(f"{r_icon} | {l_icon} | {sid} — {data['name']}", expanded=expanded):
                 if skipped:
                     st.info("ℹ️ Existing Loan = 0 → Repayment tidak diproses.")
-                # Info collateral & LR/RP
                 coll = data.get("collateral_existing", 0)
                 lr_v = data.get("lr_value", 0)
                 rp_v = data.get("rp_value", 0)
@@ -1106,6 +1054,7 @@ if run_btn:
                             st.warning(f"💡 Max Loan Rekomendasi: **{fmt_rp(max_loan)}**")
                         for c in failed_checks:
                             st.error(f"**{c['label']}** — {c['detail']}")
+
         # ── EDITOR 1b ─────────────────────────────────────────────
         st.divider()
         st.markdown("#### ✏️ Revisi Volume Sell — Nasabah Gagal 1b")
@@ -1145,27 +1094,9 @@ if run_btn:
 
             df_editor_input = pd.DataFrame(edit_rows)
 
-            def on_editor_change():
-                edited_data = st.session_state["editor_1b"]["edited_rows"]
-                for row_idx_str, changes in edited_data.items():
-                    row_idx = int(row_idx_str)
-                    if "Volume Sell (editable)" in changes:
-                        new_vol = abs(int(changes["Volume Sell (editable)"] or 0))
-                        price   = df_editor_input.iloc[row_idx]["_price"]
-                        avq     = df_editor_input.iloc[row_idx]["_avq"]
-                        clamped = min(new_vol, int(avq))
-                        if clamped != new_vol:
-                            st.warning(
-                                f"⚠️ Volume {df_editor_input.iloc[row_idx]['Stock']} "
-                                f"dipotong ke maks AVQ: {int(avq):,}"
-                            )
-                        df_editor_input.at[row_idx, "Volume Sell (editable)"] = clamped
-                        df_editor_input.at[row_idx, "Value"] = clamped * price
-
             st.caption(
                 "⚠️ Ubah kolom **Volume Sell (editable)**. "
-                "Volume otomatis dibatasi maksimal **AVQ (Maks)**. "
-                "Kolom **Value** akan ikut update otomatis."
+                "Volume otomatis dibatasi maksimal **AVQ (Maks)** saat tombol Terapkan ditekan."
             )
 
             edited = st.data_editor(
@@ -1183,22 +1114,33 @@ if run_btn:
                 },
                 use_container_width=True,
                 key="editor_1b",
-                on_change=on_editor_change,
                 hide_index=True,
             )
 
             if st.button("✅ Terapkan Revisi & Validasi Ulang", type="primary"):
-                df_sell_updated = st.session_state['df_sell_edited'].copy()
+                df_sell_updated  = st.session_state['df_sell_edited'].copy()
+                clamped_warnings = []
 
                 for i, edit_row in edited.iterrows():
                     orig_idx  = df_editor_input.iloc[i]['_df_index']
                     avq       = df_editor_input.iloc[i]['_avq']
-                    new_vol   = min(abs(int(edit_row['Volume Sell (editable)'])), int(avq))
-                    new_price = pd.to_numeric(edit_row['Closing Price'], errors='coerce') or 0
-                    new_val   = new_vol * new_price
+                    price     = df_editor_input.iloc[i]['_price']
+                    new_vol   = abs(int(edit_row['Volume Sell (editable)'] or 0))
 
+                    if new_vol > int(avq):
+                        clamped_warnings.append(
+                            f"{df_editor_input.iloc[i]['Stock']} "
+                            f"({df_editor_input.iloc[i]['SID']}): "
+                            f"{new_vol:,} → {int(avq):,}"
+                        )
+                        new_vol = int(avq)
+
+                    new_val = new_vol * price
                     df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
                     df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
+
+                if clamped_warnings:
+                    st.warning("⚠️ Volume dipotong ke AVQ: " + " | ".join(clamped_warnings))
 
                 st.session_state['df_sell_edited'] = df_sell_updated
 
@@ -1212,7 +1154,7 @@ if run_btn:
                 st.session_state['sid_results']   = new_sid_results
                 st.session_state['global_result'] = new_global_result
                 st.success("✅ Revisi diterapkan! Scroll ke atas untuk melihat hasil validasi terbaru.")
-                st.rerun()   
+                st.rerun()
 
     with tab_export:
         st.subheader("📋 Ringkasan Hasil Validasi")
