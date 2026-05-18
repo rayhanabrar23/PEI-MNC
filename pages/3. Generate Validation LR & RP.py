@@ -1139,10 +1139,8 @@ if run_btn:
                     df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
                     df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
 
-                if clamped_warnings:
-                    st.warning("⚠️ Volume dipotong ke AVQ: " + " | ".join(clamped_warnings))
-
-                st.session_state['df_sell_edited'] = df_sell_updated
+                st.session_state['df_sell_edited']    = df_sell_updated
+                st.session_state['clamped_warnings']  = clamped_warnings  # ← simpan ke session
 
                 new_sid_results, new_global_result = run_validations(
                     df_sell_updated, df_buy,
@@ -1153,9 +1151,13 @@ if run_btn:
                 )
                 st.session_state['sid_results']   = new_sid_results
                 st.session_state['global_result'] = new_global_result
-                st.success("✅ Revisi diterapkan! Scroll ke atas untuk melihat hasil validasi terbaru.")
                 st.rerun()
 
+            # Tampilkan warning SETELAH rerun (persisten)
+            if st.session_state.get('clamped_warnings'):
+                st.warning("⚠️ Volume dipotong ke AVQ: " + " | ".join(st.session_state['clamped_warnings']))
+                st.session_state['clamped_warnings'] = []  # reset setelah ditampilkan
+                
     with tab_export:
         st.subheader("📋 Ringkasan Hasil Validasi")
         summary_rows = []
