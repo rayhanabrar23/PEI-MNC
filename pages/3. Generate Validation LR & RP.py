@@ -1232,7 +1232,9 @@ if run_btn:
 
         dl_col1, dl_col2 = st.columns(2)
         with dl_col1:
-            df_sell_final = st.session_state.get('df_sell_edited', df_sell) or df_sell
+            df_sell_final = st.session_state.get('df_sell_edited')
+            if df_sell_final is None:
+                df_sell_final = df_sell
             rep_buf, rep_fname = generate_repayment_excel(df_sell_final, sid_results)
             st.download_button(
                 label="⬇️ Repayment Proceed (.xlsx)",
