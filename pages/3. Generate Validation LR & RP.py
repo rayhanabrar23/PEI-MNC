@@ -409,47 +409,47 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
                 f"SID {sid} tidak ditemukan di OP file"
             )
         else:
-                op_1a_pass      = True
-                op_1a_detail    = []
-                op_1a_ok_detail = []
-                op_1a_adjusted  = []  # tracking saham yang di-adjust
+            op_1a_pass      = True
+            op_1a_detail    = []
+            op_1a_ok_detail = []
+            op_1a_adjusted  = []  # tracking saham yang di-adjust
 
-                for _, row in sell["rows"].iterrows():
-                    stk = str(row.iloc[SELL_STOCK]).strip()
-                    vol = abs(pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0)
+            for _, row in sell["rows"].iterrows():
+                stk = str(row.iloc[SELL_STOCK]).strip()
+                vol = abs(pd.to_numeric(row.iloc[SELL_VOL], errors="coerce") or 0)
 
-                    if stk not in op_stocks:
-                        op_1a_pass = False
-                        op_1a_detail.append(f"{stk}: tidak ada di OP file")
-                    elif vol > op_stocks[stk]:
-                        # AUTO-ADJUST: potong ke maks OP, tandai sebagai adjusted
-                        avail = op_stocks[stk]
-                        op_1a_adjusted.append(
-                            f"{stk}: {vol:,.0f} → {avail:,.0f} (dipotong sesuai OP)"
-                        )
-                        op_1a_ok_detail.append(f"{stk}: {avail:,.0f} ✓ (adjusted)")
-                        # Update volume di df_sell supaya downstream pakai angka yang sudah dipotong
-                        df_sell.loc[
-                            (col(df_sell, SELL_SID).astype(str) == sid) &
-                            (col(df_sell, SELL_STOCK).astype(str).str.strip() == stk),
-                            df_sell.columns[SELL_VOL]
-                        ] = avail
-                    else:
-                        op_1a_ok_detail.append(f"{stk}: {vol:,.0f} ✓")
-
-                if op_1a_adjusted:
-                    detail_msg = (
-                        "⚠️ Auto-adjusted: " + "; ".join(op_1a_adjusted) +
-                        (" || OK: " + "; ".join(op_1a_ok_detail) if op_1a_ok_detail else "")
+                if stk not in op_stocks:
+                    op_1a_pass = False
+                    op_1a_detail.append(f"{stk}: tidak ada di OP file")
+                elif vol > op_stocks[stk]:
+                    # AUTO-ADJUST: potong ke maks OP, tandai sebagai adjusted
+                    avail = op_stocks[stk]
+                    op_1a_adjusted.append(
+                        f"{stk}: {vol:,.0f} → {avail:,.0f} (dipotong sesuai OP)"
                     )
+                    op_1a_ok_detail.append(f"{stk}: {avail:,.0f} ✓ (adjusted)")
+                    # Update volume di df_sell supaya downstream pakai angka yang sudah dipotong
+                    df_sell.loc[
+                        (col(df_sell, SELL_SID).astype(str) == sid) &
+                        (col(df_sell, SELL_STOCK).astype(str).str.strip() == stk),
+                        df_sell.columns[SELL_VOL]
+                    ] = avail
                 else:
-                    detail_msg = (
-                        "; ".join(op_1a_ok_detail) if op_1a_pass
-                        else "; ".join(op_1a_detail) + (
-                            " || OK: " + "; ".join(op_1a_ok_detail) if op_1a_ok_detail else ""
-                        )
+                    op_1a_ok_detail.append(f"{stk}: {vol:,.0f} ✓")
+
+            if op_1a_adjusted:
+                detail_msg = (
+                    "⚠️ Auto-adjusted: " + "; ".join(op_1a_adjusted) +
+                    (" || OK: " + "; ".join(op_1a_ok_detail) if op_1a_ok_detail else "")
+                )
+            else:
+                detail_msg = (
+                    "; ".join(op_1a_ok_detail) if op_1a_pass
+                    else "; ".join(op_1a_detail) + (
+                        " || OK: " + "; ".join(op_1a_ok_detail) if op_1a_ok_detail else ""
                     )
-                add("1a-OP. Saham Sell Terverifikasi di OP File", op_1a_pass, detail_msg)
+                )
+            add("1a-OP. Saham Sell Terverifikasi di OP File", op_1a_pass, detail_msg)
 
         # ── 1b. Total Repayment Value ≤ Total Loan Value ──────────
         if repayment_skipped_no_loan:
