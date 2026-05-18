@@ -610,8 +610,8 @@ if all(required_files):
 
 else:
     st.warning(
-        "⬆️ Upload 7 file wajib (Netting Invoice, SID Client, Risk Parameter, "
-        "Margin Buy, Margin Sell, Outstanding Position, File Harga Saham) untuk memulai."
+        "⬆️ Upload 8 file wajib (Netting Invoice, SID Client, Risk Parameter, "
+        "Margin Buy, Margin Sell, Outstanding Position, File Harga Saham, LR sebagai Outstanding belum settled) untuk memulai."
     )
 
     with st.expander("📖 Panduan Struktur File"):
