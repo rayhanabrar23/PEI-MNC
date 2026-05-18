@@ -902,8 +902,7 @@ if run_btn:
             st.stop()
 
         target_sid = "IDD041068994003"
-        st.write("DEBUG SID target ada di CL:", target_sid in cl_data)
-        st.write("DEBUG CL target:", cl_data.get(target_sid))
+        st.write("DEBUG OP target:", op_data.get(target_sid))
         try:
             closing_prices = load_closing_price(cp_file)
         except Exception as ex:
