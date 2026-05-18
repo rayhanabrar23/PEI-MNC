@@ -901,6 +901,8 @@ if run_btn:
             st.error(f"Gagal membaca Credit Limit file: {ex}")
             st.stop()
 
+        st.write("DEBUG CL parsed:", dict(list(cl_data.items())[:3]))
+
         try:
             closing_prices = load_closing_price(cp_file)
         except Exception as ex:
