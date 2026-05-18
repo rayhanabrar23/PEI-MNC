@@ -317,11 +317,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         })
         cl   = cl_data.get(sid, {"available_limit": 0, "name": sid})
 
-        if sid == "IDD041068994003":
-            import streamlit as st
-            st.write(f"DEBUG cl untuk {sid}:", cl)
-            st.write(f"DEBUG available_limit:", cl.get("available_limit"))
-
         loan_existing    = op["loan_existing"]
         accrued_interest = op["accrued_interest"]
         available_limit  = cl["available_limit"]
