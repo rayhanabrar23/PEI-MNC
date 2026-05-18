@@ -73,46 +73,20 @@ def fmt_vol(val):
     except Exception:
         return str(val)
 
-
 def load_price_file(uploaded_file):
-    """
-    Load file harga Excel. Kolom yang diharapkan:
-    STK_CODE (B) dan STK_CLOS (G) — atau deteksi otomatis.
-    """
-    df = pd.read_excel(uploaded_file, dtype=str)
-    df.columns = df.columns.str.strip()
-
-    # Cari kolom kode saham
-    code_col = None
-    for c in df.columns:
-        if str(c).upper() in ['STK_CODE', 'STOCK_CODE', 'CODE', 'KODE']:
-            code_col = c
-            break
-    if code_col is None:
-        # fallback: kolom kedua (index 1)
-        code_col = df.columns[1]
-
-    # Cari kolom closing price
-    price_col = None
-    for c in df.columns:
-        if str(c).upper() in ['STK_CLOS', 'CLOSE', 'CLOSING', 'CLOSING_PRICE', 'HARGA']:
-            price_col = c
-            break
-    if price_col is None:
-        # fallback: kolom G (index 6)
-        price_col = df.columns[6] if len(df.columns) > 6 else df.columns[-1]
-
+    df = pd.read_excel(uploaded_file, sheet_name=0, header=0)
+    
+    code_col  = 'no_share'   # kolom A
+    price_col = 'kurs_now'   # kolom F
+    
     price_map = {}
     for _, row in df.iterrows():
         code  = str(row[code_col]).strip().upper()
-        price = pd.to_numeric(str(row[price_col]).replace(',', '').replace('.', ''), errors='coerce')
-        # Handle format angka Indonesia: titik = ribuan
-        if pd.isna(price):
-            price = 0.0
-        price_map[code] = float(price)
-
+        price = pd.to_numeric(str(row[price_col]).replace(',', ''), errors='coerce')
+        if pd.notna(price) and code and code != 'NAN':
+            price_map[code] = float(price)
+    
     return price_map
-
 
 # ─────────────────────────────────────────────
 # 3. AREA UPLOAD FILE
