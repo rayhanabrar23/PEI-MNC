@@ -927,6 +927,8 @@ if run_btn:
     st.session_state['global_result']  = global_result
     st.session_state['op_data']        = op_data
     st.session_state['cl_data']        = cl_data
+    if 'clamped_warnings' not in st.session_state:
+        st.session_state['clamped_warnings'] = []
 
     with st.expander("🔍 Debug: cek collateral"):
         sample_sid = list(op_data.keys())[0] if op_data else None
