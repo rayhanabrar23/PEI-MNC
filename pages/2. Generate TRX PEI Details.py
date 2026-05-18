@@ -288,16 +288,16 @@ if all(required_files):
             st.session_state['sid_cid_map'] = df_sid.set_index('sid_key')['cid_key'].to_dict()
 
             # Tambah kolateral pending dari LR file
-                if file_lr is not None:
-                    sid_to_cid = df_sid.set_index('sid_key')['cid_key'].to_dict()
-                    lr_coll    = parse_lr_collateral(file_lr)
-                    for (sid, stock), qty in lr_coll.items():
-                        cid = sid_to_cid.get(sid, None)
-                        if cid:
-                            key = (cid, stock)
-                            if key not in porto_coll_lookup:  # jangan overwrite data OP
-                                porto_coll_lookup[key] = qty
-                                op_lot_lookup[key]     = qty
+            if file_lr is not None:
+                sid_to_cid = df_sid.set_index('sid_key')['cid_key'].to_dict()
+                lr_coll    = parse_lr_collateral(file_lr)
+                for (sid, stock), qty in lr_coll.items():
+                    cid = sid_to_cid.get(sid, None)
+                    if cid:
+                        key = (cid, stock)
+                        if key not in porto_coll_lookup:  # jangan overwrite data OP
+                            porto_coll_lookup[key] = qty
+                            op_lot_lookup[key]     = qty
 
             # ── 4e. SHEET BUY ─────────────────────────────────
             # STEP 1 filter: hanya saham yang dicover margin PEI
