@@ -1109,10 +1109,26 @@ if st.session_state.get('sid_results') is not None:
                 edit_rows = []
                 for sid, data in gagal_1b:
                     rows = df_sell_edit[col(df_sell_edit, SELL_SID).astype(str) == sid]
+                    # Hitung total buy value untuk SID ini (untuk rekomendasi)
+                    buy_rows_sid  = st.session_state['df_buy'][
+                        col(st.session_state['df_buy'], BUY_SID).astype(str) == sid
+                        ]    
+                    total_buy_val_sid = pd.to_numeric(col(buy_rows_sid, BUY_VAL), errors='coerce').sum()
+                    remaining_budget  = total_buy_val_sid
+
                     for idx, row in rows.iterrows():
                         price = pd.to_numeric(row.iloc[SELL_CP], errors='coerce') or 0
                         vol   = abs(pd.to_numeric(row.iloc[SELL_VOL], errors='coerce') or 0)
                         avq   = pd.to_numeric(row.iloc[SELL_AVQ], errors='coerce') or 0
+
+                        if price > 0 and remaining_budget > 0:
+                            max_vol_by_value = remaining_budget / price
+                            rec_vol          = min(avq, max_vol_by_value)
+                            rec_vol          = (int(rec_vol) // 100) * 100
+                            remaining_budget -= rec_vol * price
+                        else:
+                            rec_vol = 0
+
                         edit_rows.append({
                             '_df_index':              idx,
                             '_price':                 price,
@@ -1121,6 +1137,7 @@ if st.session_state.get('sid_results') is not None:
                             'Nama':                   data['name'],
                             'Stock':                  str(row.iloc[SELL_STOCK]),
                             'AVQ (Maks)':             int(avq),
+                            'Rekomendasi Vol':        rec_vol,        # ← kolom baru
                             'Volume Sell (editable)': int(vol),
                             'Closing Price':          price,
                             'Value':                  vol * price,
@@ -1140,6 +1157,7 @@ if st.session_state.get('sid_results') is not None:
                         "Nama":       st.column_config.TextColumn(disabled=True),
                         "Stock":      st.column_config.TextColumn(disabled=True),
                         "AVQ (Maks)": st.column_config.NumberColumn(disabled=True),
+                        "Rekomendasi Vol": st.column_config.NumberColumn(disabled=True),
                         "Volume Sell (editable)": st.column_config.NumberColumn(
                             min_value=0, step=100,
                         ),
