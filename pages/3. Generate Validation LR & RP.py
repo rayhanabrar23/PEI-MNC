@@ -9,6 +9,18 @@ if 'sid_results' not in st.session_state:
     st.session_state['sid_results'] = None
 if 'global_result' not in st.session_state:
     st.session_state['global_result'] = None
+if 'clamped_warnings' not in st.session_state:
+    st.session_state['clamped_warnings'] = []
+if 'df_buy' not in st.session_state:
+    st.session_state['df_buy'] = None
+if 'closing_prices' not in st.session_state:
+    st.session_state['closing_prices'] = {}
+if 'risk_params' not in st.session_state:
+    st.session_state['risk_params'] = {}
+if 'lr_data' not in st.session_state:
+    st.session_state['lr_data'] = {}
+if 'rp_data' not in st.session_state:
+    st.session_state['rp_data'] = {}
 
 # ─────────────────────────────────────────────
 # PAGE CONFIG
@@ -307,7 +319,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
 
         loan_existing    = op["loan_existing"]
         accrued_interest = op["accrued_interest"]
-        volume_existing  = op["volume_existing"]
         available_limit  = cl["available_limit"]
         name             = op.get("name") or cl.get("name") or sid
         op_stocks        = op.get("stocks", {})
@@ -842,7 +853,7 @@ with st.expander("📖 Panduan Struktur File"):
     | 1 | Hasil_MNC | Sheet Sell & Buy |
     | 2 | OP File | Baris 0: D=SID, F=Loan Existing, G=Accrued; Baris 1: D=Saham, E=Qty |
     | 3 | Credit Limit | C=SID, G=Available Limit |
-    | 4 | Closing Price | B=StockCode, G=Closing Price |
+    | 4 | Closing Price | kolom no_share & kurs_now |
     | 5 | RiskParameter | A=StockCode, C=Haircut% |
     | 6 | LR File | Baris 0: C=SID, H=Nilai LR |
     | 7 | RP File | Baris 0: C=SID, H=Nilai RP |
@@ -921,22 +932,36 @@ if run_btn:
             closing_prices, risk_params, lr_data, rp_data
         )
 
-    st.success("✅ Validasi Selesai!")
+    # ── Simpan semua ke session state ──────────────────────────
     st.session_state['df_sell_edited'] = df_sell.copy()
+    st.session_state['df_buy']         = df_buy.copy()
     st.session_state['sid_results']    = sid_results
     st.session_state['global_result']  = global_result
     st.session_state['op_data']        = op_data
     st.session_state['cl_data']        = cl_data
-    if 'clamped_warnings' not in st.session_state:
-        st.session_state['clamped_warnings'] = []
+    st.session_state['closing_prices'] = closing_prices
+    st.session_state['risk_params']    = risk_params
+    st.session_state['lr_data']        = lr_data
+    st.session_state['rp_data']        = rp_data
+    st.session_state['clamped_warnings'] = []
 
-    with st.expander("🔍 Debug: cek collateral"):
-        sample_sid = list(op_data.keys())[0] if op_data else None
-        if sample_sid:
-            st.write("op_data sample:", op_data[sample_sid])
-            st.write("stocks in OP:", op_data[sample_sid].get("stocks", {}))
-            st.write("closing_prices sample (5):", dict(list(closing_prices.items())[:5]))
-            st.write("risk_params sample (5):", dict(list(risk_params.items())[:5]))
+    st.success("✅ Validasi Selesai!")
+
+# ─────────────────────────────────────────────
+# TAMPILKAN HASIL (dari session state)
+# ─────────────────────────────────────────────
+
+if st.session_state.get('sid_results') is not None:
+
+    sid_results  = st.session_state['sid_results']
+    global_result = st.session_state['global_result']
+    op_data      = st.session_state.get('op_data', {})
+    cl_data      = st.session_state.get('cl_data', {})
+    df_buy       = st.session_state.get('df_buy')
+    closing_prices = st.session_state.get('closing_prices', {})
+    risk_params  = st.session_state.get('risk_params', {})
+    lr_data      = st.session_state.get('lr_data', {})
+    rp_data      = st.session_state.get('rp_data', {})
 
     total_sids         = len(sid_results)
     total_pass_rep     = sum(1 for v in sid_results.values() if lolos_repayment(v))
@@ -1061,8 +1086,14 @@ if run_btn:
         st.divider()
         st.markdown("#### ✏️ Revisi Volume Sell — Nasabah Gagal 1b")
 
+        # Tampilkan warning clamp jika ada (persisten setelah rerun)
+        if st.session_state.get('clamped_warnings'):
+            st.warning("⚠️ Volume dipotong ke AVQ: " + " | ".join(st.session_state['clamped_warnings']))
+            st.session_state['clamped_warnings'] = []
+
+        _sid_results = st.session_state.get('sid_results') or sid_results
         gagal_1b = [
-            (sid, d) for sid, d in sid_results.items()
+            (sid, d) for sid, d in _sid_results.items()
             if any(
                 c["label"].startswith("1b.") and not c["passed"]
                 for c in d["checks"]
@@ -1072,94 +1103,94 @@ if run_btn:
         if not gagal_1b:
             st.success("Tidak ada nasabah yang gagal validasi 1b.")
         else:
-            df_sell_edit = st.session_state['df_sell_edited']
+            df_sell_edit = st.session_state.get('df_sell_edited')
 
-            edit_rows = []
-            for sid, data in gagal_1b:
-                rows = df_sell_edit[col(df_sell_edit, SELL_SID).astype(str) == sid]
-                for idx, row in rows.iterrows():
-                    price = pd.to_numeric(row.iloc[SELL_CP], errors='coerce') or 0
-                    vol   = abs(pd.to_numeric(row.iloc[SELL_VOL], errors='coerce') or 0)
-                    avq   = pd.to_numeric(row.iloc[SELL_AVQ], errors='coerce') or 0
-                    edit_rows.append({
-                        '_df_index':              idx,
-                        '_price':                 price,
-                        '_avq':                   avq,
-                        'SID':                    sid,
-                        'Nama':                   data['name'],
-                        'Stock':                  str(row.iloc[SELL_STOCK]),
-                        'AVQ (Maks)':             int(avq),
-                        'Volume Sell (editable)': int(vol),
-                        'Closing Price':          price,
-                        'Value':                  vol * price,
-                    })
+            if df_sell_edit is not None:
+                edit_rows = []
+                for sid, data in gagal_1b:
+                    rows = df_sell_edit[col(df_sell_edit, SELL_SID).astype(str) == sid]
+                    for idx, row in rows.iterrows():
+                        price = pd.to_numeric(row.iloc[SELL_CP], errors='coerce') or 0
+                        vol   = abs(pd.to_numeric(row.iloc[SELL_VOL], errors='coerce') or 0)
+                        avq   = pd.to_numeric(row.iloc[SELL_AVQ], errors='coerce') or 0
+                        edit_rows.append({
+                            '_df_index':              idx,
+                            '_price':                 price,
+                            '_avq':                   avq,
+                            'SID':                    sid,
+                            'Nama':                   data['name'],
+                            'Stock':                  str(row.iloc[SELL_STOCK]),
+                            'AVQ (Maks)':             int(avq),
+                            'Volume Sell (editable)': int(vol),
+                            'Closing Price':          price,
+                            'Value':                  vol * price,
+                        })
 
-            df_editor_input = pd.DataFrame(edit_rows)
+                df_editor_input = pd.DataFrame(edit_rows)
 
-            st.caption(
-                "⚠️ Ubah kolom **Volume Sell (editable)**. "
-                "Volume otomatis dibatasi maksimal **AVQ (Maks)** saat tombol Terapkan ditekan."
-            )
-
-            edited = st.data_editor(
-                df_editor_input.drop(columns=['_df_index', '_price', '_avq']),
-                column_config={
-                    "SID":        st.column_config.TextColumn(disabled=True),
-                    "Nama":       st.column_config.TextColumn(disabled=True),
-                    "Stock":      st.column_config.TextColumn(disabled=True),
-                    "AVQ (Maks)": st.column_config.NumberColumn(disabled=True),
-                    "Volume Sell (editable)": st.column_config.NumberColumn(
-                        min_value=0, step=100,
-                    ),
-                    "Closing Price": st.column_config.NumberColumn(disabled=True),
-                    "Value":      st.column_config.NumberColumn(disabled=True),
-                },
-                use_container_width=True,
-                key="editor_1b",
-                hide_index=True,
-            )
-
-            if st.button("✅ Terapkan Revisi & Validasi Ulang", type="primary"):
-                df_sell_updated  = st.session_state['df_sell_edited'].copy()
-                clamped_warnings = []
-
-                for i, edit_row in edited.iterrows():
-                    orig_idx  = df_editor_input.iloc[i]['_df_index']
-                    avq       = df_editor_input.iloc[i]['_avq']
-                    price     = df_editor_input.iloc[i]['_price']
-                    new_vol   = abs(int(edit_row['Volume Sell (editable)'] or 0))
-
-                    if new_vol > int(avq):
-                        clamped_warnings.append(
-                            f"{df_editor_input.iloc[i]['Stock']} "
-                            f"({df_editor_input.iloc[i]['SID']}): "
-                            f"{new_vol:,} → {int(avq):,}"
-                        )
-                        new_vol = int(avq)
-
-                    new_val = new_vol * price
-                    df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
-                    df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
-
-                st.session_state['df_sell_edited']    = df_sell_updated
-                st.session_state['clamped_warnings']  = clamped_warnings  # ← simpan ke session
-
-                new_sid_results, new_global_result = run_validations(
-                    df_sell_updated, df_buy,
-                    st.session_state['op_data'],
-                    st.session_state['cl_data'],
-                    CREDIT_LIMIT_PARTISIPAN,
-                    closing_prices, risk_params, lr_data, rp_data
+                st.caption(
+                    "⚠️ Ubah kolom **Volume Sell (editable)**. "
+                    "Volume otomatis dibatasi maksimal **AVQ (Maks)** saat tombol Terapkan ditekan."
                 )
-                st.session_state['sid_results']   = new_sid_results
-                st.session_state['global_result'] = new_global_result
-                st.rerun()
 
-            # Tampilkan warning SETELAH rerun (persisten)
-            if st.session_state.get('clamped_warnings'):
-                st.warning("⚠️ Volume dipotong ke AVQ: " + " | ".join(st.session_state['clamped_warnings']))
-                st.session_state['clamped_warnings'] = []  # reset setelah ditampilkan
-                
+                edited = st.data_editor(
+                    df_editor_input.drop(columns=['_df_index', '_price', '_avq']),
+                    column_config={
+                        "SID":        st.column_config.TextColumn(disabled=True),
+                        "Nama":       st.column_config.TextColumn(disabled=True),
+                        "Stock":      st.column_config.TextColumn(disabled=True),
+                        "AVQ (Maks)": st.column_config.NumberColumn(disabled=True),
+                        "Volume Sell (editable)": st.column_config.NumberColumn(
+                            min_value=0, step=100,
+                        ),
+                        "Closing Price": st.column_config.NumberColumn(disabled=True),
+                        "Value":      st.column_config.NumberColumn(disabled=True),
+                    },
+                    use_container_width=True,
+                    key="editor_1b",
+                    hide_index=True,
+                )
+
+                if st.button("✅ Terapkan Revisi & Validasi Ulang", type="primary"):
+                    df_sell_updated  = st.session_state['df_sell_edited'].copy()
+                    clamped_warnings = []
+
+                    for i, edit_row in edited.iterrows():
+                        orig_idx = df_editor_input.iloc[i]['_df_index']
+                        avq      = df_editor_input.iloc[i]['_avq']
+                        price    = df_editor_input.iloc[i]['_price']
+                        new_vol  = abs(int(edit_row['Volume Sell (editable)'] or 0))
+
+                        if new_vol > int(avq):
+                            clamped_warnings.append(
+                                f"{df_editor_input.iloc[i]['Stock']} "
+                                f"({df_editor_input.iloc[i]['SID']}): "
+                                f"{new_vol:,} → {int(avq):,}"
+                            )
+                            new_vol = int(avq)
+
+                        new_val = new_vol * price
+                        df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
+                        df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
+
+                    st.session_state['df_sell_edited']   = df_sell_updated
+                    st.session_state['clamped_warnings'] = clamped_warnings
+
+                    new_sid_results, new_global_result = run_validations(
+                        df_sell_updated,
+                        st.session_state['df_buy'],
+                        st.session_state['op_data'],
+                        st.session_state['cl_data'],
+                        CREDIT_LIMIT_PARTISIPAN,
+                        st.session_state['closing_prices'],
+                        st.session_state['risk_params'],
+                        st.session_state['lr_data'],
+                        st.session_state['rp_data'],
+                    )
+                    st.session_state['sid_results']   = new_sid_results
+                    st.session_state['global_result'] = new_global_result
+                    st.rerun()
+
     with tab_export:
         st.subheader("📋 Ringkasan Hasil Validasi")
         summary_rows = []
@@ -1203,57 +1234,62 @@ if run_btn:
         with dl_col1:
             df_sell_final = st.session_state.get('df_sell_edited')
             if df_sell_final is None:
-                df_sell_final = df_sell
-            rep_buf, rep_fname = generate_repayment_excel(df_sell_final, sid_results)
-            st.download_button(
-                label="⬇️ Repayment Proceed (.xlsx)",
-                data=rep_buf,
-                file_name=rep_fname,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
+                st.warning("Data sell belum tersedia.")
+            else:
+                rep_buf, rep_fname = generate_repayment_excel(df_sell_final, sid_results)
+                st.download_button(
+                    label="⬇️ Repayment Proceed (.xlsx)",
+                    data=rep_buf,
+                    file_name=rep_fname,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
         with dl_col2:
-            loan_buf, loan_fname = generate_loan_excel(df_buy, sid_results)
-            st.download_button(
-                label="⬇️ Loan Request (.xlsx)",
-                data=loan_buf,
-                file_name=loan_fname,
-                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                use_container_width=True,
-            )
+            if df_buy is not None:
+                loan_buf, loan_fname = generate_loan_excel(df_buy, sid_results)
+                st.download_button(
+                    label="⬇️ Loan Request (.xlsx)",
+                    data=loan_buf,
+                    file_name=loan_fname,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                    use_container_width=True,
+                )
 
         st.divider()
         st.subheader("📝 Export File Revisi (Nasabah Gagal)")
 
         rv_col1, rv_col2 = st.columns(2)
         with rv_col1:
-            rev_rep_buf, rev_rep_fname, n_gagal_rep = generate_revisi_repayment_excel(
-                df_sell, sid_results, op_data
-            )
-            if n_gagal_rep == 0:
-                st.info("✅ Tidak ada nasabah yang gagal Repayment.")
-            else:
-                st.download_button(
-                    label=f"⬇️ Revisi Repayment — {n_gagal_rep} nasabah gagal",
-                    data=rev_rep_buf,
-                    file_name=rev_rep_fname,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    type="secondary",
+            df_sell_final = st.session_state.get('df_sell_edited')
+            if df_sell_final is not None:
+                rev_rep_buf, rev_rep_fname, n_gagal_rep = generate_revisi_repayment_excel(
+                    df_sell_final, sid_results, op_data
                 )
+                if n_gagal_rep == 0:
+                    st.info("✅ Tidak ada nasabah yang gagal Repayment.")
+                else:
+                    st.download_button(
+                        label=f"⬇️ Revisi Repayment — {n_gagal_rep} nasabah gagal",
+                        data=rev_rep_buf,
+                        file_name=rev_rep_fname,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="secondary",
+                    )
 
         with rv_col2:
-            rev_loan_buf, rev_loan_fname, n_gagal_loan = generate_revisi_loan_excel(
-                df_buy, sid_results, op_data, cl_data
-            )
-            if n_gagal_loan == 0:
-                st.info("✅ Tidak ada nasabah yang gagal Loan Request.")
-            else:
-                st.download_button(
-                    label=f"⬇️ Revisi Loan Request — {n_gagal_loan} nasabah gagal",
-                    data=rev_loan_buf,
-                    file_name=rev_loan_fname,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-                    use_container_width=True,
-                    type="secondary",
+            if df_buy is not None:
+                rev_loan_buf, rev_loan_fname, n_gagal_loan = generate_revisi_loan_excel(
+                    df_buy, sid_results, op_data, cl_data
                 )
+                if n_gagal_loan == 0:
+                    st.info("✅ Tidak ada nasabah yang gagal Loan Request.")
+                else:
+                    st.download_button(
+                        label=f"⬇️ Revisi Loan Request — {n_gagal_loan} nasabah gagal",
+                        data=rev_loan_buf,
+                        file_name=rev_loan_fname,
+                        mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+                        use_container_width=True,
+                        type="secondary",
+                    )
