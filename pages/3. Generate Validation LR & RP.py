@@ -170,35 +170,12 @@ def parse_rp_file(content: str) -> dict:
 
 def load_closing_price(uploaded_file) -> dict:
     df = pd.read_excel(uploaded_file, sheet_name=0, header=0)
-    
-    # Cari kolom STK_CODE (kode saham, biasanya huruf kapital singkat)
-    code_col = None
-    for c in df.columns:
-        if str(c).strip().upper() in ['STK_CODE', 'STOCK_CODE', 'CODE', 'KODE', 'TICKER']:
-            code_col = c
-            break
-    
-    # Cari kolom STK_CLOS (closing price, angka)
-    price_col = None
-    for c in df.columns:
-        if str(c).strip().upper() in ['STK_CLOS', 'CLOSE', 'CLOSING', 'CLOSING_PRICE', 'HARGA', 'LAST']:
-            price_col = c
-            break
-    
-    # Fallback: tampilkan semua kolom untuk debug
-    if code_col is None or price_col is None:
-        import streamlit as st
-        st.error(f"❌ Kolom tidak ditemukan! Kolom yang ada: {list(df.columns)}")
-        st.dataframe(df.head(3))
-        return {}
-    
     result = {}
     for _, row in df.iterrows():
-        code  = str(row[code_col]).strip().upper()
-        price = pd.to_numeric(str(row[price_col]).replace(',', ''), errors='coerce')
+        code  = str(row['no_share']).strip().upper()
+        price = pd.to_numeric(str(row['kurs_now']).replace(',', ''), errors='coerce')
         if pd.notna(price) and code and code != 'NAN':
             result[code] = float(price)
-    
     return result
 
 def load_risk_parameter(uploaded_file) -> dict:
