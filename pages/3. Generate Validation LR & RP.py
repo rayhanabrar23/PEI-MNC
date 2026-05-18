@@ -965,6 +965,14 @@ if run_btn:
 
     st.success("✅ Validasi Selesai!")
 
+    with st.expander("🔍 Debug: cek collateral"):
+        sample_sid = list(op_data.keys())[0] if op_data else None
+        if sample_sid:
+            st.write("op_data sample:", op_data[sample_sid])
+            st.write("stocks in OP:", op_data[sample_sid].get("stocks", {}))
+            st.write("closing_prices sample (5):", dict(list(closing_prices.items())[:5]))
+            st.write("risk_params sample (5):", dict(list(risk_params.items())[:5]))
+            
     total_sids           = len(sid_results)
     total_pass_rep       = sum(1 for v in sid_results.values() if lolos_repayment(v))
     total_pass_loan      = sum(1 for v in sid_results.values() if lolos_loan(v))
