@@ -88,6 +88,25 @@ def load_price_file(uploaded_file):
     
     return price_map
 
+def parse_lr_collateral(file) -> dict:
+    result = {}
+    current_sid = None
+    content = file.read().decode('utf-8', errors='replace')
+    file.seek(0)
+    for line in content.strip().splitlines():
+        parts = line.strip().split('|')
+        if not parts:
+            continue
+        if parts[0] == '0':
+            current_sid = parts[2].strip()
+        elif parts[0] == '1' and current_sid:
+            stock = parts[2].strip().upper()
+            qty   = pd.to_numeric(parts[3], errors='coerce') or 0
+            if stock and qty > 0:
+                key = (current_sid, stock)
+                result[key] = result.get(key, 0) + qty
+    return result
+
 # ─────────────────────────────────────────────
 # 3. AREA UPLOAD FILE
 # ─────────────────────────────────────────────
@@ -109,7 +128,8 @@ with col_u3:
 with col_u4:
     file_price = st.file_uploader("7. Closing Price (xlsx)", type=['xlsx'],
                                    help="File Excel dengan kolom STK_CODE dan STK_CLOS (Closing Price)")
-
+    file_lr    = st.file_uploader("8. Loan Request (.txt)", type=['txt'])
+    
 # ─────────────────────────────────────────────
 # 4. PROSES DATA
 # ─────────────────────────────────────────────
@@ -266,6 +286,18 @@ if all(required_files):
 
             st.session_state['porto_coll_lookup'] = porto_coll_lookup
             st.session_state['sid_cid_map'] = df_sid.set_index('sid_key')['cid_key'].to_dict()
+
+            # Tambah kolateral pending dari LR file
+                if file_lr is not None:
+                    sid_to_cid = df_sid.set_index('sid_key')['cid_key'].to_dict()
+                    lr_coll    = parse_lr_collateral(file_lr)
+                    for (sid, stock), qty in lr_coll.items():
+                        cid = sid_to_cid.get(sid, None)
+                        if cid:
+                            key = (cid, stock)
+                            if key not in porto_coll_lookup:  # jangan overwrite data OP
+                                porto_coll_lookup[key] = qty
+                                op_lot_lookup[key]     = qty
 
             # ── 4e. SHEET BUY ─────────────────────────────────
             # STEP 1 filter: hanya saham yang dicover margin PEI
