@@ -1107,115 +1107,112 @@ if run_btn:
                         for c in failed_checks:
                             st.error(f"**{c['label']}** — {c['detail']}")
         # ── EDITOR 1b ─────────────────────────────────────────────
-st.divider()
-st.markdown("#### ✏️ Revisi Volume Sell — Nasabah Gagal 1b")
+        st.divider()
+        st.markdown("#### ✏️ Revisi Volume Sell — Nasabah Gagal 1b")
 
-gagal_1b = [
-    (sid, d) for sid, d in sid_results.items()
-    if any(
-        c["label"].startswith("1b.") and not c["passed"]
-        for c in d["checks"]
-    )
-]
+        gagal_1b = [
+            (sid, d) for sid, d in sid_results.items()
+            if any(
+                c["label"].startswith("1b.") and not c["passed"]
+                for c in d["checks"]
+            )
+        ]
 
-if not gagal_1b:
-    st.success("Tidak ada nasabah yang gagal validasi 1b.")
-else:
-    df_sell_edit = st.session_state['df_sell_edited']
+        if not gagal_1b:
+            st.success("Tidak ada nasabah yang gagal validasi 1b.")
+        else:
+            df_sell_edit = st.session_state['df_sell_edited']
 
-    edit_rows = []
-    for sid, data in gagal_1b:
-        rows = df_sell_edit[col(df_sell_edit, SELL_SID).astype(str) == sid]
-        for idx, row in rows.iterrows():
-            price = pd.to_numeric(row.iloc[SELL_CP], errors='coerce') or 0
-            vol   = abs(pd.to_numeric(row.iloc[SELL_VOL], errors='coerce') or 0)
-            avq   = pd.to_numeric(row.iloc[SELL_AVQ], errors='coerce') or 0
-            edit_rows.append({
-                '_df_index':              idx,
-                '_price':                 price,
-                '_avq':                   avq,
-                'SID':                    sid,
-                'Nama':                   data['name'],
-                'Stock':                  str(row.iloc[SELL_STOCK]),
-                'AVQ (Maks)':             int(avq),
-                'Volume Sell (editable)': int(vol),
-                'Closing Price':          price,
-                'Value':                  vol * price,
-            })
+            edit_rows = []
+            for sid, data in gagal_1b:
+                rows = df_sell_edit[col(df_sell_edit, SELL_SID).astype(str) == sid]
+                for idx, row in rows.iterrows():
+                    price = pd.to_numeric(row.iloc[SELL_CP], errors='coerce') or 0
+                    vol   = abs(pd.to_numeric(row.iloc[SELL_VOL], errors='coerce') or 0)
+                    avq   = pd.to_numeric(row.iloc[SELL_AVQ], errors='coerce') or 0
+                    edit_rows.append({
+                        '_df_index':              idx,
+                        '_price':                 price,
+                        '_avq':                   avq,
+                        'SID':                    sid,
+                        'Nama':                   data['name'],
+                        'Stock':                  str(row.iloc[SELL_STOCK]),
+                        'AVQ (Maks)':             int(avq),
+                        'Volume Sell (editable)': int(vol),
+                        'Closing Price':          price,
+                        'Value':                  vol * price,
+                    })
 
-    df_editor_input = pd.DataFrame(edit_rows)
+            df_editor_input = pd.DataFrame(edit_rows)
 
-    # Poin 1: realtime update Value saat volume diubah
-    # Pakai callback via session_state key "editor_1b"
-    def on_editor_change():
-        edited_data = st.session_state["editor_1b"]["edited_rows"]
-        for row_idx_str, changes in edited_data.items():
-            row_idx = int(row_idx_str)
-            if "Volume Sell (editable)" in changes:
-                new_vol   = abs(int(changes["Volume Sell (editable)"] or 0))
-                price     = df_editor_input.iloc[row_idx]["_price"]
-                avq       = df_editor_input.iloc[row_idx]["_avq"]
-                # Poin 2: clamp otomatis ke AVQ
-                clamped   = min(new_vol, int(avq))
-                if clamped != new_vol:
-                    st.warning(
-                        f"⚠️ Volume {df_editor_input.iloc[row_idx]['Stock']} "
-                        f"dipotong ke maks AVQ: {int(avq):,}"
-                    )
-                df_editor_input.at[row_idx, "Volume Sell (editable)"] = clamped
-                df_editor_input.at[row_idx, "Value"] = clamped * price
+            def on_editor_change():
+                edited_data = st.session_state["editor_1b"]["edited_rows"]
+                for row_idx_str, changes in edited_data.items():
+                    row_idx = int(row_idx_str)
+                    if "Volume Sell (editable)" in changes:
+                        new_vol = abs(int(changes["Volume Sell (editable)"] or 0))
+                        price   = df_editor_input.iloc[row_idx]["_price"]
+                        avq     = df_editor_input.iloc[row_idx]["_avq"]
+                        clamped = min(new_vol, int(avq))
+                        if clamped != new_vol:
+                            st.warning(
+                                f"⚠️ Volume {df_editor_input.iloc[row_idx]['Stock']} "
+                                f"dipotong ke maks AVQ: {int(avq):,}"
+                            )
+                        df_editor_input.at[row_idx, "Volume Sell (editable)"] = clamped
+                        df_editor_input.at[row_idx, "Value"] = clamped * price
 
-    st.caption(
-        "⚠️ Ubah kolom **Volume Sell (editable)**. "
-        "Volume otomatis dibatasi maksimal **AVQ (Maks)**. "
-        "Kolom **Value** akan ikut update otomatis."
-    )
+            st.caption(
+                "⚠️ Ubah kolom **Volume Sell (editable)**. "
+                "Volume otomatis dibatasi maksimal **AVQ (Maks)**. "
+                "Kolom **Value** akan ikut update otomatis."
+            )
 
-    edited = st.data_editor(
-        df_editor_input.drop(columns=['_df_index', '_price', '_avq']),
-        column_config={
-            "SID":        st.column_config.TextColumn(disabled=True),
-            "Nama":       st.column_config.TextColumn(disabled=True),
-            "Stock":      st.column_config.TextColumn(disabled=True),
-            "AVQ (Maks)": st.column_config.NumberColumn(disabled=True),
-            "Volume Sell (editable)": st.column_config.NumberColumn(
-                min_value=0, step=100,
-            ),
-            "Closing Price": st.column_config.NumberColumn(disabled=True),
-            "Value":      st.column_config.NumberColumn(disabled=True),
-        },
-        use_container_width=True,
-        key="editor_1b",
-        on_change=on_editor_change,
-        hide_index=True,
-    )
+            edited = st.data_editor(
+                df_editor_input.drop(columns=['_df_index', '_price', '_avq']),
+                column_config={
+                    "SID":        st.column_config.TextColumn(disabled=True),
+                    "Nama":       st.column_config.TextColumn(disabled=True),
+                    "Stock":      st.column_config.TextColumn(disabled=True),
+                    "AVQ (Maks)": st.column_config.NumberColumn(disabled=True),
+                    "Volume Sell (editable)": st.column_config.NumberColumn(
+                        min_value=0, step=100,
+                    ),
+                    "Closing Price": st.column_config.NumberColumn(disabled=True),
+                    "Value":      st.column_config.NumberColumn(disabled=True),
+                },
+                use_container_width=True,
+                key="editor_1b",
+                on_change=on_editor_change,
+                hide_index=True,
+            )
 
-    if st.button("✅ Terapkan Revisi & Validasi Ulang", type="primary"):
-        df_sell_updated = st.session_state['df_sell_edited'].copy()
+            if st.button("✅ Terapkan Revisi & Validasi Ulang", type="primary"):
+                df_sell_updated = st.session_state['df_sell_edited'].copy()
 
-        for i, edit_row in edited.iterrows():
-            orig_idx  = df_editor_input.iloc[i]['_df_index']
-            avq       = df_editor_input.iloc[i]['_avq']
-            new_vol   = min(abs(int(edit_row['Volume Sell (editable)'])), int(avq))  # Poin 2: clamp saat apply
-            new_price = pd.to_numeric(edit_row['Closing Price'], errors='coerce') or 0
-            new_val   = new_vol * new_price
+                for i, edit_row in edited.iterrows():
+                    orig_idx  = df_editor_input.iloc[i]['_df_index']
+                    avq       = df_editor_input.iloc[i]['_avq']
+                    new_vol   = min(abs(int(edit_row['Volume Sell (editable)'])), int(avq))
+                    new_price = pd.to_numeric(edit_row['Closing Price'], errors='coerce') or 0
+                    new_val   = new_vol * new_price
 
-            df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
-            df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
+                    df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
+                    df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
 
-        st.session_state['df_sell_edited'] = df_sell_updated
+                st.session_state['df_sell_edited'] = df_sell_updated
 
-        new_sid_results, new_global_result = run_validations(
-            df_sell_updated, df_buy,
-            st.session_state['op_data'],
-            st.session_state['cl_data'],
-            CREDIT_LIMIT_PARTISIPAN,
-            closing_prices, risk_params, lr_data, rp_data
-        )
-        st.session_state['sid_results']   = new_sid_results
-        st.session_state['global_result'] = new_global_result
-        st.success("✅ Revisi diterapkan! Scroll ke atas untuk melihat hasil validasi terbaru.")
-        st.rerun()
+                new_sid_results, new_global_result = run_validations(
+                    df_sell_updated, df_buy,
+                    st.session_state['op_data'],
+                    st.session_state['cl_data'],
+                    CREDIT_LIMIT_PARTISIPAN,
+                    closing_prices, risk_params, lr_data, rp_data
+                )
+                st.session_state['sid_results']   = new_sid_results
+                st.session_state['global_result'] = new_global_result
+                st.success("✅ Revisi diterapkan! Scroll ke atas untuk melihat hasil validasi terbaru.")
+                st.rerun()   
 
     with tab_export:
         st.subheader("📋 Ringkasan Hasil Validasi")
