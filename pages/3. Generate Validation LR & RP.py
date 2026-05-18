@@ -317,6 +317,11 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         })
         cl   = cl_data.get(sid, {"available_limit": 0, "name": sid})
 
+        if sid == "IDD041068994003":
+            import streamlit as st
+            st.write(f"DEBUG cl untuk {sid}:", cl)
+            st.write(f"DEBUG available_limit:", cl.get("available_limit"))
+
         loan_existing    = op["loan_existing"]
         accrued_interest = op["accrued_interest"]
         available_limit  = cl["available_limit"]
@@ -900,10 +905,6 @@ if run_btn:
         except Exception as ex:
             st.error(f"Gagal membaca Credit Limit file: {ex}")
             st.stop()
-            
-        cl = cl_data.get(sid, {"available_limit": 0, "name": sid})
-        st.write(f"DEBUG {sid} cl:", cl)
-        st.write("DEBUG ANTM closing price:", closing_prices.get("ANTM"))
         
         try:
             closing_prices = load_closing_price(cp_file)
