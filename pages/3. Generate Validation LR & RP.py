@@ -1300,6 +1300,7 @@ if st.session_state.get('sid_results') is not None:
                     sell_val     = data.get("total_sell_val", 0)
                     effective_cl = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
                     max_loan_final = max_63 if max_63 > 0 else 0
+                    st.write(f"SID: {sid} | max_63: {max_63} | avail_limit: {avail_limit} | max_loan_final: {max_loan_final}")
                     df_buy_updated = auto_adjust_loan(
                         df_buy_updated, sid, max_loan_final,
                         cl_data.get(sid, {}).get('available_limit', 0),
