@@ -326,6 +326,16 @@ def auto_adjust_loan(df_buy, sid, max_loan_value, original_loan_val, closing_pri
         df_updated.at[i, df_updated.columns[BUY_VOL]] = new_vol
         df_updated.at[i, df_updated.columns[BUY_VAL]] = new_val
 
+    # kalau semua volume jadi 0, dikeluarkan
+    total_vol_after = sum(
+        pd.to_numeric(df_updated.at[i, df_updated.columns[BUY_VOL]], errors='coerce') or 0
+        for i in rows_idx
+    )
+    if total_vol_after == 0:
+        for i in rows_idx:
+            df_updated.at[i, df_updated.columns[BUY_VOL]] = 0
+            df_updated.at[i, df_updated.columns[BUY_VAL]] = 0
+
     return df_updated
 
 
