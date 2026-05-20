@@ -89,22 +89,23 @@ def load_price_file(uploaded_file):
     return price_map
 
 def parse_lr_collateral(file) -> dict:
+    df = pd.read_excel(file, sheet_name=1, header=0, dtype=str)  # sheet ke-2 (index 1)
+    df.columns = df.columns.str.strip()
+    sid_col   = df.columns[0]
+    stock_col = df.columns[2]
+    qty_col   = df.columns[3]
     result = {}
-    current_sid = None
-    content = file.read().decode('utf-8', errors='replace')
-    file.seek(0)
-    for line in content.strip().splitlines():
-        parts = line.strip().split('|')
-        if not parts:
-            continue
-        if parts[0] == '0':
-            current_sid = parts[2].strip()
-        elif parts[0] == '1' and current_sid:
-            stock = parts[2].strip().upper()
-            qty   = pd.to_numeric(parts[3], errors='coerce') or 0
-            if stock and qty > 0:
-                key = (current_sid, stock)
-                result[key] = result.get(key, 0) + qty
+    for _, row in df.iterrows():
+        sid   = str(row[sid_col]).strip()
+        stock = str(row[stock_col]).strip().upper()
+        qty_str = str(row[qty_col]).replace('.', '').replace(',', '').strip()
+        try:
+            qty = float(qty_str)
+        except Exception:
+            qty = 0.0
+        if sid and stock and qty > 0:
+            key = (sid, stock)
+            result[key] = result.get(key, 0) + qty
     return result
 
 # ─────────────────────────────────────────────
@@ -128,7 +129,7 @@ with col_u3:
 with col_u4:
     file_price = st.file_uploader("7. Closing Price (xlsx)", type=['xlsx'],
                                    help="File Excel dengan kolom STK_CODE dan STK_CLOS (Closing Price)")
-    file_lr    = st.file_uploader("8. Loan Request (.txt)", type=['txt'])
+    file_lr = st.file_uploader("8. Loan Request (.xlsx)", type=['xlsx'])
     
 # ─────────────────────────────────────────────
 # 4. PROSES DATA
