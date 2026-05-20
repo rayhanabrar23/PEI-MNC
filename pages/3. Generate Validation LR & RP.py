@@ -1314,6 +1314,10 @@ if st.session_state.get('sid_results') is not None:
                         df_buy_updated, sid, max_loan_final,
                         orig_loan,
                         st.session_state['closing_prices'])
+                    rows_sid = df_buy_updated[col(df_buy_updated, BUY_SID).astype(str) == sid]
+                    st.session_state['debug_log'].append(
+                        f"  → VOL setelah adjust: {col(rows_sid, BUY_VOL).tolist()}"
+                    )
 
                 new_sid_results, new_global_result = run_validations(
                     st.session_state['df_sell_edited'],
