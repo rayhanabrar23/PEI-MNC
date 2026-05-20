@@ -1190,7 +1190,7 @@ if st.session_state.get('sid_results') is not None:
                            "Volume otomatis dibatasi maksimal **AVQ (Maks)** saat tombol Terapkan ditekan.")
 
                 edited = st.data_editor(
-                    df_editor_input.drop(columns=['_df_index', '_price', '_avq']),
+                    df_editor_input.drop(columns=['_df_index', '_price', '_avq', _max_vol_1b']),
                     column_config={
                         "SID":        st.column_config.TextColumn(disabled=True),
                         "Nama":       st.column_config.TextColumn(disabled=True),
