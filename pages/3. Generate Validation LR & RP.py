@@ -300,25 +300,20 @@ def calc_max_loan_baru(loan_existing, accrued_interest, lr_existing, rp_existing
 # AUTO-ADJUST LOAN (proporsional per saham)
 # ─────────────────────────────────────────────
 
-def auto_adjust_loan(df_buy, sid, max_loan_value, closing_prices):
+def auto_adjust_loan(df_buy, sid, max_loan_value, original_loan_val, closing_prices):
     df_updated = df_buy.copy()
     rows_idx   = df_buy[col(df_buy, BUY_SID).astype(str) == sid].index
 
     if len(rows_idx) == 0:
         return df_updated
 
-    total_val_now = sum(
-        pd.to_numeric(df_buy.at[i, df_buy.columns[BUY_VAL]], errors='coerce') or 0
-        for i in rows_idx
-    )
-
-    if total_val_now <= 0 or max_loan_value <= 0:
+    if original_loan_val <= 0 or max_loan_value <= 0:
         for i in rows_idx:
             df_updated.at[i, df_updated.columns[BUY_VOL]] = 0
             df_updated.at[i, df_updated.columns[BUY_VAL]] = 0
         return df_updated
 
-    ratio = max_loan_value / total_val_now
+    ratio = max_loan_value / original_loan_val
 
     for i in rows_idx:
         old_vol = pd.to_numeric(df_buy.at[i, df_buy.columns[BUY_VOL]], errors='coerce') or 0
@@ -1306,7 +1301,9 @@ if st.session_state.get('sid_results') is not None:
                     effective_cl = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
                     max_loan_final = max_63 if max_63 > 0 else 0
                     df_buy_updated = auto_adjust_loan(
-                        df_buy_updated, sid, max_loan_final, st.session_state['closing_prices'])
+                        df_buy_updated, sid, max_loan_final,
+                        cl_data.get(sid, {}).get('available_limit', 0),
+                        st.session_state['closing_prices'])
 
                 st.session_state['df_buy_adjusted'] = df_buy_updated
                 st.session_state['df_buy']          = df_buy_updated
