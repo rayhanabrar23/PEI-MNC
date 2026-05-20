@@ -1260,10 +1260,6 @@ if st.session_state.get('sid_results') is not None:
             )
         ]
 
-        if st.session_state.get('debug_log'):
-            st.warning("🔍 Debug Log:")
-            for log in st.session_state['debug_log']:
-                st.write(log)
 
         if not gagal_2b:
             st.success("✅ Tidak ada nasabah yang perlu di-adjust rasionya.")
@@ -1315,19 +1311,10 @@ if st.session_state.get('sid_results') is not None:
                     sell_val       = data.get("total_sell_val", 0)
                     max_loan_final = max_63 if max_63 > 0 else 0
                     orig_loan      = cl_data.get(sid, {}).get('available_limit', 0)
-                    if 'debug_log' not in st.session_state:
-                        st.session_state['debug_log'] = []
-                    st.session_state['debug_log'].append(
-                        f"SID: {sid} | max_63: {max_63} | orig_loan: {orig_loan} | max_loan_final: {max_loan_final}"
-                    )
                     df_buy_updated = auto_adjust_loan(
                         df_buy_updated, sid, max_loan_final,
                         orig_loan,
                         st.session_state['closing_prices'])
-                    rows_sid = df_buy_updated[col(df_buy_updated, BUY_SID).astype(str) == sid]
-                    st.session_state['debug_log'].append(
-                        f"  → VOL setelah adjust: {col(rows_sid, BUY_VOL).tolist()}"
-                    )
 
                 new_sid_results, new_global_result = run_validations(
                     st.session_state['df_sell_edited'],
