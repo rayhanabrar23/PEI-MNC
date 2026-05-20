@@ -319,7 +319,7 @@ def auto_adjust_loan(df_buy, sid, max_loan_value, original_loan_val, closing_pri
         old_vol = pd.to_numeric(df_buy.at[i, df_buy.columns[BUY_VOL]], errors='coerce') or 0
         stock   = str(df_buy.at[i, df_buy.columns[BUY_STOCK]]).strip().upper()
         price   = closing_prices.get(stock, 0)
-        new_vol = int(old_vol * ratio)  # bulatkan ke bawah per lot
+        new_vol = int((old_vol * ratio) // 100) * 100
         if new_vol < 0:
             new_vol = 0
         new_val = new_vol * price if price > 0 else 0
