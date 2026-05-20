@@ -1270,7 +1270,7 @@ if st.session_state.get('sid_results') is not None:
                 sell_val   = data.get("total_sell_val", 0)
 
                 effective_cl   = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
-                max_loan_final = min(max_63, effective_cl) if max_63 > 0 else 0
+                max_loan_final = max_63 if max_63 > 0 else 0
 
                 if max_loan_final <= 0:
                     status    = "❌ Dikeluarkan (collateral/CL tidak cukup)"
