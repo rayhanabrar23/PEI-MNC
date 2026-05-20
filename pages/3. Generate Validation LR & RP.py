@@ -1172,16 +1172,19 @@ if st.session_state.get('sid_results') is not None:
                         price = pd.to_numeric(row.iloc[SELL_CP], errors='coerce') or 0
                         vol   = abs(pd.to_numeric(row.iloc[SELL_VOL], errors='coerce') or 0)
                         avq   = pd.to_numeric(row.iloc[SELL_AVQ], errors='coerce') or 0
+                        total_buy_val  = data.get('total_buy_val', 0)
+                        max_vol_for_1b = int((total_buy_val // price) // 100) * 100 if price > 0 else 0
                         edit_rows.append({
                             '_df_index': idx, '_price': price, '_avq': avq,
+                            '_max_vol_1b': max_vol_for_1b,
                             'SID': sid, 'Nama': data['name'],
                             'Stock': str(row.iloc[SELL_STOCK]),
                             'AVQ (Maks)': int(avq),
+                            'Max Vol (1b)': max_vol_for_1b,
                             'Volume Sell (editable)': int(vol),
                             'Closing Price': price,
                             'Value': vol * price,
                         })
-
                 df_editor_input = pd.DataFrame(edit_rows)
                 st.caption("⚠️ Ubah kolom **Volume Sell (editable)**. "
                            "Volume otomatis dibatasi maksimal **AVQ (Maks)** saat tombol Terapkan ditekan.")
@@ -1196,6 +1199,7 @@ if st.session_state.get('sid_results') is not None:
                         "Volume Sell (editable)": st.column_config.NumberColumn(min_value=0, step=100),
                         "Closing Price": st.column_config.NumberColumn(disabled=True),
                         "Value":      st.column_config.NumberColumn(disabled=True),
+                        "Max Vol (1b)": st.column_config.NumberColumn(disabled=True),
                     },
                     use_container_width=True, key="editor_1b", hide_index=True,
                 )
@@ -1207,12 +1211,14 @@ if st.session_state.get('sid_results') is not None:
                         orig_idx = df_editor_input.iloc[i]['_df_index']
                         avq      = df_editor_input.iloc[i]['_avq']
                         price    = df_editor_input.iloc[i]['_price']
-                        new_vol  = abs(int(edit_row['Volume Sell (editable)'] or 0))
-                        if new_vol > int(avq):
+                        new_vol      = abs(int(edit_row['Volume Sell (editable)'] or 0))
+                        max_vol_1b   = int(df_editor_input.iloc[i]['_max_vol_1b'])
+                        max_vol_final = min(int(avq), max_vol_1b)
+                        if new_vol > max_vol_final:
                             clamped_warnings.append(
                                 f"{df_editor_input.iloc[i]['Stock']} ({df_editor_input.iloc[i]['SID']}): "
-                                f"{new_vol:,} → {int(avq):,}")
-                            new_vol = int(avq)
+                                f"{new_vol:,} → {max_vol_final:,}")
+                            new_vol = max_vol_final
                         new_val = new_vol * price
                         df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VOL]] = new_vol
                         df_sell_updated.at[orig_idx, df_sell_updated.columns[SELL_VAL]] = new_val
