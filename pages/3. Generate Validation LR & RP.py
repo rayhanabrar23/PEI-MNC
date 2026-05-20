@@ -1293,21 +1293,18 @@ if st.session_state.get('sid_results') is not None:
             st.caption(f"**{n_dipotong}** nasabah dipotong · **{n_dikeluarkan}** nasabah dikeluarkan")
 
             if st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary",
-                         use_container_width=True):
+                            use_container_width=True):
                 df_buy_updated = st.session_state['df_buy_adjusted'].copy()
                 for sid, data in gagal_2b:
-                    max_63       = data.get("max_loan_63", 0)
-                    sell_val     = data.get("total_sell_val", 0)
-                    effective_cl = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
+                    max_63         = data.get("max_loan_63", 0)
+                    sell_val       = data.get("total_sell_val", 0)
                     max_loan_final = max_63 if max_63 > 0 else 0
-                    st.write(f"SID: {sid} | max_63: {max_63} | avail_limit: {avail_limit} | max_loan_final: {max_loan_final}")
+                    orig_loan      = cl_data.get(sid, {}).get('available_limit', 0)
+                    st.write(f"SID: {sid} | max_63: {max_63} | orig_loan: {orig_loan} | max_loan_final: {max_loan_final}")
                     df_buy_updated = auto_adjust_loan(
                         df_buy_updated, sid, max_loan_final,
-                        cl_data.get(sid, {}).get('available_limit', 0),
+                        orig_loan,
                         st.session_state['closing_prices'])
-
-                st.session_state['df_buy_adjusted'] = df_buy_updated
-                st.session_state['df_buy']          = df_buy_updated
 
                 new_sid_results, new_global_result = run_validations(
                     st.session_state['df_sell_edited'],
@@ -1320,8 +1317,10 @@ if st.session_state.get('sid_results') is not None:
                     st.session_state['lr_data'],
                     st.session_state['rp_data'],
                 )
-                st.session_state['sid_results']   = new_sid_results
-                st.session_state['global_result'] = new_global_result
+                st.session_state['df_buy_adjusted'] = df_buy_updated
+                st.session_state['df_buy']          = df_buy_updated
+                st.session_state['sid_results']     = new_sid_results
+                st.session_state['global_result']   = new_global_result
                 st.success("✅ Auto-Adjust diterapkan!")
                 st.rerun()
 
