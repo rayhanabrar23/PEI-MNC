@@ -289,11 +289,10 @@ def calc_ratio_baru(loan_existing, accrued_interest, lr_value, rp_value, collate
     return None, numerator
 
 
-def calc_max_loan_baru(loan_existing, accrued_interest, lr_existing, rp_existing, collateral, available_limit, total_sell_val, threshold=0.63):
+def calc_max_loan_baru(loan_existing, accrued_interest, lr_existing, rp_existing, collateral, threshold=0.63):
     current_numerator = loan_existing + accrued_interest + lr_existing - rp_existing
     max_from_ratio    = collateral * threshold - current_numerator
-    effective_cl      = available_limit + total_sell_val
-    return max(min(max_from_ratio, effective_cl), 0)
+    return max(max_from_ratio, 0)
     
 
 
@@ -384,7 +383,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         total_sell_vol = sell["total_volume"]
         total_sell_val = sell["total_value"]
         total_buy_vol  = buy["total_volume"]
-        total_buy_val  = buy["total_value"]
+        total_buy_val  = available_limit
 
         has_repayment    = total_sell_vol > 0
         has_loan_request = total_buy_vol  > 0
@@ -395,7 +394,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         max_loan_63 = calc_max_loan_baru(
             loan_existing, accrued_interest, lr_value,
             rp_value + total_sell_val, collateral_existing,
-            available_limit, total_sell_val,
             threshold=AUTO_ADJUST_TARGET
         )
 
@@ -486,7 +484,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         else:
             rep_1b_pass = total_sell_val <= total_buy_val
             add("1b. Total Repayment Value ≤ Total Loan Value", rep_1b_pass,
-                f"Total Sell Value: {fmt_rp(total_sell_val)} | Total Buy Value: {fmt_rp(total_buy_val)}")
+                f"Total Sell Value: {fmt_rp(total_sell_val)} | Max Loan (Available Limit): {fmt_rp(total_buy_val)}")
 
         # ── 1c ──────────────────────────────────────────────────
         if repayment_skipped_no_loan:
@@ -536,7 +534,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
                 loan_existing, accrued_interest, lr_after_buy, rp_after_sell, collateral_existing)
             max_loan_rec = calc_max_loan_baru(
                 loan_existing, accrued_interest, lr_value, rp_value + total_sell_val,
-                collateral_existing, available_limit, total_sell_val,
+                collateral_existing,
                 threshold=RATIO_THRESHOLD)
             sid_results["max_loan_recommendation"] = max_loan_rec
 
@@ -567,10 +565,10 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
             add("3. Credit Limit Nasabah", True, "Tidak ada Loan Request — check 3 dilewati")
         else:
             effective_limit = available_limit + total_sell_val
-            cl_nasabah_pass = effective_limit > total_buy_val
+            cl_nasabah_pass = True
             add("3. Credit Limit Nasabah", cl_nasabah_pass,
                 f"Avail Limit: {fmt_rp(available_limit)} + Sell: {fmt_rp(total_sell_val)} = "
-                f"{fmt_rp(effective_limit)} | Loan Diajukan: {fmt_rp(total_buy_val)}")
+                f"{fmt_rp(effective_limit)} | Max Loan Diajukan: {fmt_rp(total_buy_val)}")
 
         results[sid] = sid_results
 
@@ -646,13 +644,13 @@ def generate_repayment_excel(df_sell, sid_results):
     return buf, f"Repayment Proceed {today_str}.xlsx"
 
 
-def generate_loan_excel(df_buy, sid_results):
+def generate_loan_excel(df_buy, sid_results, cl_data):
     today_str   = datetime.today().strftime("%Y%m%d")
     passed_sids = [sid for sid, data in sid_results.items() if lolos_loan(data)]
     sheet1_rows = []
     for sid in passed_sids:
         rows      = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
-        total_val = available_limit
+        total_val = total_val = cl_data.get(sid, {}).get('available_limit', 0)
         total_vol = pd.to_numeric(col(rows, BUY_VOL), errors="coerce").sum()
         if total_vol > 0:
             sheet1_rows.append({"Participant Code": "EP", "SID Client": sid,
@@ -674,14 +672,14 @@ def generate_loan_excel(df_buy, sid_results):
     return buf, f"Loan Request {today_str}.xlsx"
 
 
-def generate_lr_rekap_excel(df_buy, sid_results):
+def generate_lr_rekap_excel(df_buy, sid_results, cl_data):
     """Rekap LR lolos hari ini → input LR belum settled besok"""
     today_str   = datetime.today().strftime("%Y%m%d")
     passed_sids = [sid for sid, data in sid_results.items() if lolos_loan(data)]
     rows = []
     for sid in passed_sids:
         buy_rows  = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
-        total_val = pd.to_numeric(col(buy_rows, BUY_VAL), errors="coerce").sum()
+        total_val = cl_data.get(sid, {}).get('available_limit', 0)
         total_vol = pd.to_numeric(col(buy_rows, BUY_VOL), errors="coerce").sum()
         if total_vol > 0:
             rows.append({
@@ -1252,7 +1250,7 @@ if st.session_state.get('sid_results') is not None:
         gagal_2b = [
             (sid, d) for sid, d in sid_results.items()
             if d.get("has_loan_request") and any(
-                c["label"].startswith(("2b.", "3.")) and not c["passed"]
+                c["label"].startswith("2b.") and not c["passed"]
                 for c in d["checks"]
             )
         ]
@@ -1306,7 +1304,7 @@ if st.session_state.get('sid_results') is not None:
                     max_63       = data.get("max_loan_63", 0)
                     sell_val     = data.get("total_sell_val", 0)
                     effective_cl = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
-                    max_loan_final = min(max_63, effective_cl) if max_63 > 0 else 0
+                    max_loan_final = max_63 if max_63 > 0 else 0
                     df_buy_updated = auto_adjust_loan(
                         df_buy_updated, sid, max_loan_final, st.session_state['closing_prices'])
 
@@ -1378,7 +1376,7 @@ if st.session_state.get('sid_results') is not None:
         with dl_col2:
             df_buy_final = st.session_state.get('df_buy')
             if df_buy_final is not None:
-                loan_buf, loan_fname = generate_loan_excel(df_buy_final, sid_results)
+                loan_buf, loan_fname = generate_loan_excel(df_buy_final, sid_results, cl_data)
                 st.download_button("⬇️ Loan Request (.xlsx)", data=loan_buf,
                                    file_name=loan_fname,
                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
@@ -1392,7 +1390,7 @@ if st.session_state.get('sid_results') is not None:
         with rek_col1:
             df_buy_final = st.session_state.get('df_buy')
             if df_buy_final is not None:
-                lr_rek_buf, lr_rek_fname = generate_lr_rekap_excel(df_buy_final, sid_results)
+                lr_rek_buf, lr_rek_fname = generate_lr_rekap_excel(df_buy_final, sid_results, cl_data)
                 st.download_button("⬇️ Rekap LR Belum Settled (.xlsx)", data=lr_rek_buf,
                                    file_name=lr_rek_fname,
                                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
