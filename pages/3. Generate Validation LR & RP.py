@@ -289,10 +289,12 @@ def calc_ratio_baru(loan_existing, accrued_interest, lr_value, rp_value, collate
     return None, numerator
 
 
-def calc_max_loan_baru(loan_existing, accrued_interest, lr_existing, rp_existing, collateral, threshold=0.63):
+def calc_max_loan_baru(loan_existing, accrued_interest, lr_existing, rp_existing, collateral, available_limit, total_sell_val, threshold=0.63):
     current_numerator = loan_existing + accrued_interest + lr_existing - rp_existing
-    max_loan = collateral * threshold - current_numerator
-    return max(max_loan, 0)
+    max_from_ratio    = collateral * threshold - current_numerator
+    effective_cl      = available_limit + total_sell_val
+    return max(min(max_from_ratio, effective_cl), 0)
+    
 
 
 # ─────────────────────────────────────────────
@@ -393,6 +395,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         max_loan_63 = calc_max_loan_baru(
             loan_existing, accrued_interest, lr_value,
             rp_value + total_sell_val, collateral_existing,
+            available_limit, total_sell_val,
             threshold=AUTO_ADJUST_TARGET
         )
 
@@ -533,7 +536,8 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
                 loan_existing, accrued_interest, lr_after_buy, rp_after_sell, collateral_existing)
             max_loan_rec = calc_max_loan_baru(
                 loan_existing, accrued_interest, lr_value, rp_value + total_sell_val,
-                collateral_existing, threshold=RATIO_THRESHOLD)
+                collateral_existing, available_limit, total_sell_val,
+                threshold=RATIO_THRESHOLD)
             sid_results["max_loan_recommendation"] = max_loan_rec
 
             if ratio_loan is not None:
@@ -1242,7 +1246,8 @@ if st.session_state.get('sid_results') is not None:
         gagal_2b = [
             (sid, d) for sid, d in sid_results.items()
             if d.get("has_loan_request") and any(
-                c["label"].startswith("2b.") and not c["passed"] for c in d["checks"]
+                c["label"].startswith(("2b.", "3.")) and not c["passed"]
+                for c in d["checks"]
             )
         ]
 
@@ -1260,22 +1265,27 @@ if st.session_state.get('sid_results') is not None:
                 rp_v       = data.get("rp_value", 0)
                 sell_val   = data.get("total_sell_val", 0)
 
-                if max_63 <= 0:
-                    status    = "❌ Dikeluarkan (collateral tidak cukup)"
-                    adj_ratio = ((loan_exist + accrued + lr_v - (rp_v + sell_val)) / collateral
-                                 if collateral > 0 else None)
+                effective_cl   = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
+                max_loan_final = min(max_63, effective_cl) if max_63 > 0 else 0
+
+                if max_loan_final <= 0:
+                    status    = "❌ Dikeluarkan (collateral/CL tidak cukup)"
+                    adj_ratio, _ = calc_ratio_baru(
+                        loan_exist, accrued, lr_v, rp_v + sell_val, collateral)
                 else:
-                    status    = f"✂️ Dipotong ke {fmt_rp(max_63)}"
-                    num       = loan_exist + accrued + (lr_v + max_63) - (rp_v + sell_val)
-                    adj_ratio = num / collateral if collateral > 0 else None
+                    status    = f"✂️ Dipotong ke {fmt_rp(max_loan_final)}"
+                    adj_ratio, _ = calc_ratio_baru(
+                        loan_exist, accrued, lr_v + max_loan_final, rp_v + sell_val, collateral)
 
                 preview_rows.append({
-                    'SID':            sid,
-                    'Nama':           data['name'],
-                    'Loan Diajukan':  fmt_rp(total_buy),
-                    'Max Loan (63%)': fmt_rp(max_63) if max_63 > 0 else "Rp 0",
-                    'Rasio Setelah':  fmt_pct(adj_ratio) if adj_ratio else "N/A",
-                    'Status':         status,
+                    'SID':                  sid,
+                    'Nama':                 data['name'],
+                    'Loan Diajukan':        fmt_rp(total_buy),
+                    'Max Loan (63%)':       fmt_rp(max_63) if max_63 > 0 else "Rp 0",
+                    'Effective CL':         fmt_rp(effective_cl),
+                    'Max Loan Final':       fmt_rp(max_loan_final) if max_loan_final > 0 else "Rp 0",
+                    'Rasio Setelah':        fmt_pct(adj_ratio) if adj_ratio else "N/A",
+                    'Status':               status,
                 })
 
             st.dataframe(pd.DataFrame(preview_rows), use_container_width=True, hide_index=True)
@@ -1287,9 +1297,12 @@ if st.session_state.get('sid_results') is not None:
                          use_container_width=True):
                 df_buy_updated = st.session_state['df_buy_adjusted'].copy()
                 for sid, data in gagal_2b:
-                    max_63 = data.get("max_loan_63", 0)
+                    max_63       = data.get("max_loan_63", 0)
+                    sell_val     = data.get("total_sell_val", 0)
+                    effective_cl = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
+                    max_loan_final = min(max_63, effective_cl) if max_63 > 0 else 0
                     df_buy_updated = auto_adjust_loan(
-                        df_buy_updated, sid, max_63, st.session_state['closing_prices'])
+                        df_buy_updated, sid, max_loan_final, st.session_state['closing_prices'])
 
                 st.session_state['df_buy_adjusted'] = df_buy_updated
                 st.session_state['df_buy']          = df_buy_updated
