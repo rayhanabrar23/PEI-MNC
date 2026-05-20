@@ -652,7 +652,7 @@ def generate_loan_excel(df_buy, sid_results):
     sheet1_rows = []
     for sid in passed_sids:
         rows      = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
-        total_val = pd.to_numeric(col(rows, BUY_VAL), errors="coerce").sum()
+        total_val = available_limit
         total_vol = pd.to_numeric(col(rows, BUY_VOL), errors="coerce").sum()
         if total_vol > 0:
             sheet1_rows.append({"Participant Code": "EP", "SID Client": sid,
