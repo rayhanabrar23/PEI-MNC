@@ -1278,7 +1278,16 @@ if st.session_state.get('sid_results') is not None:
                 effective_cl   = cl_data.get(sid, {}).get('available_limit', 0) + sell_val
                 max_loan_final = max_63 if max_63 > 0 else 0
 
-                if max_loan_final <= 0:
+                # cek apakah max_loan_final cukup untuk minimal 1 lot saham
+                buy_rows_sid = st.session_state['df_buy'][col(st.session_state['df_buy'], BUY_SID).astype(str) == sid]
+                min_price = min(
+                    (closing_prices.get(str(r.iloc[BUY_STOCK]).strip().upper(), 0) * 100
+                     for _, r in buy_rows_sid.iterrows()),
+                    default=0
+                )
+                can_buy = max_loan_final >= min_price if min_price > 0 else False
+
+                if max_loan_final <= 0 or not can_buy:
                     status    = "❌ Dikeluarkan (collateral/CL tidak cukup)"
                     adj_ratio, _ = calc_ratio_baru(
                         loan_exist, accrued, lr_v, rp_v + sell_val, collateral)
