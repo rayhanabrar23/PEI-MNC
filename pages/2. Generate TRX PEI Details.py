@@ -296,9 +296,8 @@ if all(required_files):
                     cid = sid_to_cid.get(sid, None)
                     if cid:
                         key = (cid, stock)
-                        if key not in porto_coll_lookup:  # jangan overwrite data OP
-                            porto_coll_lookup[key] = qty
-                            op_lot_lookup[key]     = qty
+                        porto_coll_lookup[key] = porto_coll_lookup.get(key, 0) + qty
+                        op_lot_lookup[key]     = op_lot_lookup.get(key, 0) + qty
 
             # ── 4e. SHEET BUY ─────────────────────────────────
             # STEP 1 filter: hanya saham yang dicover margin PEI
