@@ -657,7 +657,7 @@ def generate_loan_excel(df_buy, sid_results, cl_data):
     sheet1_rows = []
     for sid in passed_sids:
         rows      = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
-        total_val = total_val = cl_data.get(sid, {}).get('available_limit', 0)
+        total_val = sid_results[sid].get('total_buy_val', 0)
         total_vol = pd.to_numeric(col(rows, BUY_VOL), errors="coerce").sum()
         if total_vol > 0:
             sheet1_rows.append({"Participant Code": "EP", "SID Client": sid,
@@ -686,7 +686,7 @@ def generate_lr_rekap_excel(df_buy, sid_results, cl_data):
     rows = []
     for sid in passed_sids:
         buy_rows  = df_buy[col(df_buy, BUY_SID).astype(str) == sid]
-        total_val = cl_data.get(sid, {}).get('available_limit', 0)
+        total_val = sid_results[sid].get('total_buy_val', 0)
         total_vol = pd.to_numeric(col(buy_rows, BUY_VOL), errors="coerce").sum()
         if total_vol > 0:
             rows.append({
