@@ -1359,9 +1359,10 @@ if st.session_state.get('sid_results') is not None:
                 "Max Loan Value":   data.get("total_buy_val", 0),
                 "Collateral":       data.get("collateral_existing", 0),
                 "Max Loan 63%":     data.get("max_loan_63", 0),
+                "Max Loan Final":   data.get("total_buy_val", 0),
             })
         df_cl = pd.DataFrame(cl_rows)
-        for col_name in ["Available Limit", "LR Belum Settled", "Max Loan Value", "Collateral", "Max Loan 63%"]:
+        for col_name in ["Available Limit", "LR Belum Settled", "Max Loan Value", "Collateral", "Max Loan 63%", "Max Loan Final"]:
             df_cl[col_name] = df_cl[col_name].apply(lambda x: f"Rp {x:,.0f}")
         st.dataframe(df_cl, use_container_width=True, hide_index=True)
     
