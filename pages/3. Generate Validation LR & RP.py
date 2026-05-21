@@ -388,7 +388,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         total_sell_vol = sell["total_volume"]
         total_sell_val = sell["total_value"]
         total_buy_vol  = buy["total_volume"]
-        total_buy_val  = available_limit
+        total_buy_val        = min(available_limit, lr_value) if lr_value > 0 else available_limit
         total_buy_val_actual = buy["total_value"]
 
 
