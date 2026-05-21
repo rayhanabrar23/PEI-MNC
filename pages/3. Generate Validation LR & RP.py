@@ -1360,7 +1360,10 @@ if st.session_state.get('sid_results') is not None:
                 "Collateral":       data.get("collateral_existing", 0),
                 "Max Loan 63%":     data.get("max_loan_63", 0),
             })
-        st.dataframe(pd.DataFrame(cl_rows), use_container_width=True, hide_index=True)
+        df_cl = pd.DataFrame(cl_rows)
+        for col_name in ["Available Limit", "LR Belum Settled", "Max Loan Value", "Collateral", "Max Loan 63%"]:
+            df_cl[col_name] = df_cl[col_name].apply(lambda x: f"Rp {x:,.0f}")
+        st.dataframe(df_cl, use_container_width=True, hide_index=True)
     
     with tab_export:
         st.subheader("📋 Ringkasan Hasil Validasi")
