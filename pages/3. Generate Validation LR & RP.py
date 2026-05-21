@@ -1056,11 +1056,12 @@ if st.session_state.get('sid_results') is not None:
 
     st.divider()
 
-    tab_global, tab_per_sid, tab_gagal, tab_autoadjust, tab_export = st.tabs([
+    tab_global, tab_per_sid, tab_gagal, tab_autoadjust, tab_cl, tab_export = st.tabs([
         "🌐 Validasi 4 (Global)",
         "👤 Validasi Per Nasabah",
         "❌ Nasabah Gagal",
         "⚡ Auto-Adjust Rasio",
+        "💳 Credit Limit Nasabah",
         "📥 Export Hasil",
     ])
 
@@ -1346,6 +1347,21 @@ if st.session_state.get('sid_results') is not None:
                 st.rerun()
 
     # ── TAB EXPORT ─────────────────────────────────────────────
+    with tab_cl:
+        st.subheader("💳 Credit Limit Nasabah")
+        cl_rows = []
+        for sid, data in sid_results.items():
+            cl_rows.append({
+                "SID":              sid,
+                "Nama":             data["name"],
+                "Available Limit":  cl_data.get(sid, {}).get('available_limit', 0),
+                "LR Belum Settled": data.get("lr_value", 0),
+                "Max Loan Value":   data.get("total_buy_val", 0),
+                "Collateral":       data.get("collateral_existing", 0),
+                "Max Loan 63%":     data.get("max_loan_63", 0),
+            })
+        st.dataframe(pd.DataFrame(cl_rows), use_container_width=True, hide_index=True)
+    
     with tab_export:
         st.subheader("📋 Ringkasan Hasil Validasi")
         summary_rows = []
