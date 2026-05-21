@@ -388,9 +388,6 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         total_sell_vol = sell["total_volume"]
         total_sell_val = sell["total_value"]
         total_buy_vol  = buy["total_volume"]
-        total_buy_val = min(available_limit, lr_value) if lr_value > 0 else available_limit
-        total_buy_val = min(total_buy_val, max_loan_63) if total_buy_val > max_loan_63 else total_buy_val
-        total_buy_val_actual = buy["total_value"]
 
 
         has_repayment    = total_sell_vol > 0
@@ -404,6 +401,8 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
             rp_value + total_sell_val, collateral_existing,
             threshold=AUTO_ADJUST_TARGET
         )
+        total_buy_val = min(available_limit, lr_value) if lr_value > 0 else available_limit
+        total_buy_val = min(total_buy_val, max_loan_63) if total_buy_val > max_loan_63 else total_buy_val
 
         sid_results = {
             "name":                      name,
@@ -536,7 +535,7 @@ def run_validations(df_sell, df_buy, op_data, cl_data, credit_limit_partisipan,
         if not has_loan_request:
             add("2b. Rasio Loan Request < 65%", True, "Tidak ada Loan Request — check 2b dilewati")
         else:
-            lr_after_buy  = lr_value + total_buy_val_actual
+            lr_after_buy  = lr_value + total_buy_val
             rp_after_sell = rp_value + total_sell_val
             ratio_loan, num_loan = calc_ratio_baru(
                 loan_existing, accrued_interest, lr_after_buy, rp_after_sell, collateral_existing)
