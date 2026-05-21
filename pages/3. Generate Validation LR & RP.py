@@ -793,7 +793,7 @@ def generate_revisi_loan_excel(df_buy, sid_results, op_data, cl_data):
 # CREDIT LIMIT PARTISIPAN
 # ─────────────────────────────────────────────
 
-CREDIT_LIMIT_PARTISIPAN = 148_000_000_000.0
+CREDIT_LIMIT_PARTISIPAN = 160_000_000_000.0
 
 # ─────────────────────────────────────────────
 # UI — UPLOAD
