@@ -234,7 +234,7 @@ def parse_margin_buy(content: str) -> dict:
     for line in content.strip().splitlines():
         line  = line.strip()
         parts = line.split('|')
-        if len(parts) < 6 or parts[0].strip() == 'SID':
+        if len(parts) < 7 or parts[0].strip().upper() == 'SID':
             continue
         sid = parts[0].strip()
         try:
