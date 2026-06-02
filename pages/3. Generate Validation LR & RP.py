@@ -165,13 +165,35 @@ def parse_margin_buy(content: str) -> dict:
 
 def load_hasil_mnc(uploaded_file):
     xls = pd.ExcelFile(uploaded_file)
-    if "Sell Aktif (tanpa excluded)" in xls.sheet_names:
-        df_sell = pd.read_excel(xls, sheet_name="Sell Aktif (tanpa excluded)", header=0)
-    else:
-        df_sell = pd.read_excel(xls, sheet_name="Sell (Repayment)", header=0)
+    
+    # 1. Proses Sheet Sell / Repayment (RP)
+    if "Repayment (RP)" in xls.sheet_names:
+        df_sell = pd.read_excel(xls, sheet_name="Repayment (RP)", header=0)
         if 'NETT' in df_sell.columns:
             df_sell = df_sell[~df_sell['NETT'].astype(str).str.contains('EXCLUDED', na=False)].copy()
-    df_buy = pd.read_excel(xls, sheet_name="Buy (Loan)", header=0)
+            
+    # -- Fallback (Cadangan) untuk format lama --
+    elif "Sell Aktif (tanpa excluded)" in xls.sheet_names:
+        df_sell = pd.read_excel(xls, sheet_name="Sell Aktif (tanpa excluded)", header=0)
+    elif "Sell Aktif" in xls.sheet_names:
+        df_sell = pd.read_excel(xls, sheet_name="Sell Aktif", header=0)
+    elif "Sell (Repayment)" in xls.sheet_names:
+        df_sell = pd.read_excel(xls, sheet_name="Sell (Repayment)", header=0)
+    else:
+        st.error(f"❌ Sheet untuk Repayment tidak ditemukan! Sheet yang tersedia di Excel Anda: {xls.sheet_names}")
+        st.stop()
+        
+    # 2. Proses Sheet Buy / Loan Request (LR)
+    if "Loan Request (LR)" in xls.sheet_names:
+        df_buy = pd.read_excel(xls, sheet_name="Loan Request (LR)", header=0)
+        
+    # -- Fallback (Cadangan) untuk format lama --
+    elif "Buy (Loan)" in xls.sheet_names:
+        df_buy = pd.read_excel(xls, sheet_name="Buy (Loan)", header=0)
+    else:
+        st.error(f"❌ Sheet untuk Loan Request tidak ditemukan! Sheet yang tersedia di Excel Anda: {xls.sheet_names}")
+        st.stop()
+        
     return df_sell, df_buy
 
 # ─────────────────────────────────────────────
