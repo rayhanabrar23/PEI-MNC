@@ -141,18 +141,26 @@ def parse_margin_buy(content: str) -> dict:
     for line in content.strip().splitlines():
         line  = line.strip()
         parts = line.split('|')
-        if len(parts) < 6 or parts[0].strip().upper() == 'SID': continue
+        
+        # Abaikan header atau baris yang kosong
+        if len(parts) < 5 or parts[0].strip() == 'SID': continue
+        
         sid   = parts[0].strip()
         stock = parts[1].strip().upper() if len(parts) > 1 else ''
-        try: qty   = float(str(parts[2]).replace(',',''))
+        
+        # Ambil kolom ke-3 (Indeks 2) untuk Lot (MARGIN BUY QUANTITY)
+        try: qty = float(str(parts[2]).replace(',',''))
         except: qty = 0.0
-        try: price = float(str(parts[5]).replace(',',''))
-        except: price = 0.0
-        val = qty * price
+        
+        # Ambil kolom ke-7 (Indeks 6) untuk Nilai (AVAILABLE MARKET VALUE)
+        try: val = float(str(parts[6]).replace(',','')) if len(parts) > 6 else 0.0
+        except: val = 0.0
+        
         if sid not in result: result[sid] = {}
         if stock not in result[sid]: result[sid][stock] = {'lot': 0, 'value': 0}
         result[sid][stock]['lot']   += qty
         result[sid][stock]['value'] += val
+        
     return result
 
 def load_hasil_mnc(uploaded_file):
