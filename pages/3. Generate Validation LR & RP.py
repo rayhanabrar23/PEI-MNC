@@ -753,6 +753,7 @@ if st.session_state.get('sid_results'):
             c3.metric("Current Ratio",    f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
 
             st.subheader("Step 1 — Atur Nilai RP")
+            total_rp_sim = 0
             rp_inputs = {}
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
