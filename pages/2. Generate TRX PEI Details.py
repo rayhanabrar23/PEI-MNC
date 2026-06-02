@@ -134,7 +134,12 @@ if all(required_files):
             df_mbuy['sid_key']   = df_mbuy['sid_key'].astype(str).str.strip()
 
             # Margin Sell — nilai & lot transaksi JUAL kemarin per SID
-            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={'SID':'sid_key','STOCK CODE':'stock_key'})
+            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={
+                'SID': 'sid_key',
+                'STOCK CODE': 'stock_key',
+                'REGULAR SELL QUANTITY': 'qty',
+                'AVAILABLE SELL VALUE': 'value'
+            })
             df_msell.columns = df_msell.columns.str.strip()
             df_msell = clean_num(df_msell)
             df_msell['stock_key'] = df_msell['stock_key'].astype(str).str.strip().str.upper()
