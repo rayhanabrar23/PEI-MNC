@@ -2,31 +2,23 @@ import streamlit as st
 import pandas as pd
 import io
 
-# ─────────────────────────────────────────────
-# 1. KONFIGURASI HALAMAN
-# ─────────────────────────────────────────────
 st.set_page_config(page_title="TRX PEI Details", layout="wide", page_icon="📑")
-
 st.title("📑 TRX PEI Details Generator")
-st.info(
-    "Sistem ini memproses transaksi nasabah PEI: "
-    "**Buy (Loan)** · **Sell (Repayment)** · "
-    "**Repayment Proceed** · **Loan Request**"
-)
+st.info("Sistem ini memproses transaksi nasabah PEI: **Repayment (RP)** → **Loan Request (LR)**")
 
 # ─────────────────────────────────────────────
-# 2. FUNGSI UTILITAS
+# FUNGSI UTILITAS
 # ─────────────────────────────────────────────
 
 def find_and_rename(df):
     mapping = {
-        'stock_key':  ['no_share', 'no_shares', 'Stock Code', 'Stockcode', 'Stock', 'SYMBOL', 'StockCode'],
-        'sid_key':    ['SID', 'SID_No', 'Client_SID'],
-        'cid_key':    ['no_cust', 'CID', 'Client_ID', 'Account_No'],
-        'avail_risk': ['Available Quantity', 'availablequantity', 'Available Qty', 'AvailableQuantity'],
-        'name_key':   ['Name', 'Client_Name', 'Nama'],
-        'haircut_key':['Haircut', 'haircut', 'HC'],
-        'margin_flag':['Margin', 'margin', 'MARGIN', 'flag_margin', 'MarginFlag'],
+        'stock_key':  ['no_share','no_shares','Stock Code','Stockcode','Stock','SYMBOL','StockCode'],
+        'sid_key':    ['SID','SID_No','Client_SID'],
+        'cid_key':    ['no_cust','CID','Client_ID','Account_No'],
+        'avail_risk': ['Available Quantity','availablequantity','Available Qty','AvailableQuantity'],
+        'name_key':   ['Name','Client_Name','Nama'],
+        'haircut_key':['Haircut','haircut','HC'],
+        'margin_flag':['Margin','margin','MARGIN','flag_margin','MarginFlag'],
     }
     rename_dict = {}
     for official, aliases in mapping.items():
@@ -36,597 +28,692 @@ def find_and_rename(df):
                 break
     return df.rename(columns=rename_dict)
 
-
 def clean_num(df, extra_keys=None):
     import re
-    num_keys = ['amt', 'vol', 'qty', 'val', 'price', 'avail',
-                'haircut', 'collateral', 'quantity', 'margin']
+    num_keys = ['amt','vol','qty','val','price','avail','haircut','collateral','quantity','margin']
     if extra_keys:
         num_keys += extra_keys
-
     def parse_number(s):
-        s = str(s).strip().replace('"', '').replace('%', '')
-        if s in ('', 'nan', 'None', '-'):
-            return 0.0
-        s = s.replace(',', '')
-        if re.fullmatch(r'\d{1,3}(\.\d{3})+', s):
-            s = s.replace('.', '')
+        s = str(s).strip().replace('"','').replace('%','')
+        if s in ('','nan','None','-'): return 0.0
+        s = s.replace(',','')
+        if re.fullmatch(r'\d{1,3}(\.\d{3})+', s): s = s.replace('.','')
         return pd.to_numeric(s, errors='coerce') or 0.0
-
     for c in df.columns:
         if any(k in str(c).lower() for k in num_keys):
             df[c] = df[c].apply(parse_number)
-
     return df
 
-
 def fmt_rp(val):
-    try:
-        return f"Rp {int(val):,}".replace(',', '.')
-    except Exception:
-        return str(val)
-
-
-def fmt_vol(val):
-    try:
-        return f"{int(val):,}".replace(',', '.')
-    except Exception:
-        return str(val)
+    try: return f"Rp {float(val):,.0f}".replace(',','.')
+    except: return str(val)
 
 def load_price_file(uploaded_file):
     df = pd.read_excel(uploaded_file, sheet_name=0, header=0)
-    
-    code_col  = 'no_share'   # kolom A
-    price_col = 'kurs_now'   # kolom F
-    
     price_map = {}
     for _, row in df.iterrows():
-        code  = str(row[code_col]).strip().upper()
-        price = pd.to_numeric(str(row[price_col]).replace(',', ''), errors='coerce')
+        code  = str(row['no_share']).strip().upper()
+        price = pd.to_numeric(str(row['kurs_now']).replace(',',''), errors='coerce')
         if pd.notna(price) and code and code != 'NAN':
             price_map[code] = float(price)
-    
     return price_map
 
-def parse_lr_collateral(file) -> dict:
-    df = pd.read_excel(file, sheet_name=1, header=0, dtype=str)  # sheet ke-2 (index 1)
-    df.columns = df.columns.str.strip()
-    sid_col   = df.columns[0]
-    stock_col = df.columns[2]
-    qty_col   = df.columns[3]
-    result = {}
-    for _, row in df.iterrows():
-        sid   = str(row[sid_col]).strip()
-        stock = str(row[stock_col]).strip().upper()
-        qty_str = str(row[qty_col]).replace('.', '').replace(',', '').strip()
-        try:
-            qty = float(qty_str)
-        except Exception:
-            qty = 0.0
-        if sid and stock and qty > 0:
-            key = (sid, stock)
-            result[key] = result.get(key, 0) + qty
-    return result
+def calc_collateral_value(stocks_dict, price_map, risk_params):
+    """Hitung total collateral value dari dict {stock: lot}"""
+    total = 0.0
+    detail = {}
+    for stock, lot in stocks_dict.items():
+        price = price_map.get(stock, 0)
+        hc    = risk_params.get(stock, 0.05)
+        cv    = lot * price * (1 - hc)
+        total += cv
+        detail[stock] = {'lot': lot, 'price': price, 'hc': hc, 'cv': cv}
+    return total, detail
 
 # ─────────────────────────────────────────────
-# 3. AREA UPLOAD FILE
+# UPLOAD FILE
 # ─────────────────────────────────────────────
 st.subheader("📂 Upload File")
 col_u1, col_u2, col_u3, col_u4 = st.columns(4)
-
 with col_u1:
-    file_invoice    = st.file_uploader("1. Netting Invoice (xlsx)",  type=['xlsx'])
-    file_sid_client = st.file_uploader("2. SID Client (xlsx)",       type=['xlsx'])
-
+    file_invoice    = st.file_uploader("1. Netting Invoice (xlsx)", type=['xlsx'])
+    file_sid_client = st.file_uploader("2. SID Client (xlsx)",      type=['xlsx'])
 with col_u2:
-    file_risk  = st.file_uploader("3. Risk Parameter (.txt)",  type=['txt'])
-    file_m_buy = st.file_uploader("4. Margin Buy (.txt)",      type=['txt'])
-
+    file_risk  = st.file_uploader("3. Risk Parameter (.txt)", type=['txt'])
+    file_m_buy = st.file_uploader("4. Margin Buy (.txt)",     type=['txt'])
 with col_u3:
-    file_m_sell = st.file_uploader("5. Margin Sell (.txt)",    type=['txt'])
+    file_m_sell = st.file_uploader("5. Margin Sell (.txt)",         type=['txt'])
     file_ep     = st.file_uploader("6. Outstanding Position (.txt)", type=['txt'])
-
 with col_u4:
-    file_price = st.file_uploader("7. Closing Price (xlsx)", type=['xlsx'],
-                                   help="File Excel dengan kolom STK_CODE dan STK_CLOS (Closing Price)")
-    file_lr = st.file_uploader("8. Loan Request (.xlsx)", type=['xlsx'])
-    
-# ─────────────────────────────────────────────
-# 4. PROSES DATA
-# ─────────────────────────────────────────────
-required_files = [file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell, file_price]
+    file_price = st.file_uploader("7. Closing Price (xlsx)", type=['xlsx'])
+
+required_files = [file_invoice, file_sid_client, file_risk, file_m_buy, file_m_sell, file_price, file_ep]
 
 if all(required_files):
     try:
-        with st.spinner("⚙️ Memproses seluruh data..."):
+        with st.spinner("⚙️ Memproses data..."):
 
-            # ── 4a. LOAD & STANDARISASI ──────────────────────
-            df_inv  = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
-            df_sid  = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
-
+            # ── LOAD DATA ────────────────────────────────────
+            df_inv = find_and_rename(pd.read_excel(file_invoice,    dtype=str))
+            df_sid = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
             df_inv['stock_key'] = df_inv['stock_key'].astype(str).str.strip().str.upper()
             df_inv['cid_key']   = df_inv['cid_key'].astype(str).str.strip()
             df_sid['cid_key']   = df_sid['cid_key'].astype(str).str.strip()
             df_sid['sid_key']   = df_sid['sid_key'].astype(str).str.strip()
 
-            # Risk Parameter — ambil margin flag dan avail_risk
+            # Risk Parameter
             df_risk = find_and_rename(pd.read_csv(file_risk, sep='|', dtype=str))
             df_risk.columns = df_risk.columns.str.strip()
             df_risk = clean_num(df_risk)
             df_risk['stock_key'] = df_risk['stock_key'].astype(str).str.strip().str.upper()
 
-            # ── STEP 1: Filter saham yang dicover PEI (flag margin) ──
-            # Saham yang tidak ada di Risk Parameter atau margin_flag != 'Y'/'1'/'true'
-            # dianggap tidak dicover PEI → take out dari proses
-            margin_covered_stocks = set()
-            if 'margin_flag' in df_risk.columns:
-                margin_ok = df_risk[
-                    df_risk['margin_flag'].astype(str).str.strip().str.upper().isin(['Y', '1', 'TRUE', 'YES'])
-                ]
-                margin_covered_stocks = set(margin_ok['stock_key'].unique())
-                st.info(f"ℹ️ {len(margin_covered_stocks)} saham terdeteksi dicover margin PEI dari Risk Parameter.")
-            else:
-                # Jika kolom margin_flag tidak ada, semua saham di Risk Parameter dianggap covered
-                margin_covered_stocks = set(df_risk['stock_key'].unique())
-                st.warning("⚠️ Kolom flag margin tidak ditemukan di Risk Parameter — semua saham di Risk Parameter dianggap dicover PEI.")
+            # Haircut lookup: {stock: hc_decimal}
+            risk_params = {}
+            if 'haircut_key' in df_risk.columns:
+                for _, r in df_risk.iterrows():
+                    hc_raw = pd.to_numeric(r.get('haircut_key', 5), errors='coerce') or 5
+                    hc = hc_raw / 100 if hc_raw > 1 else hc_raw
+                    risk_params[str(r['stock_key']).strip().upper()] = hc
 
-            # Margin Buy
-            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={
-                'SID':        'sid_key',
-                'STOCK CODE': 'stock_key',
-            })
+            # Margin covered stocks
+            if 'margin_flag' in df_risk.columns:
+                margin_ok = df_risk[df_risk['margin_flag'].astype(str).str.strip().str.upper().isin(['Y','1','TRUE','YES'])]
+                margin_covered_stocks = set(margin_ok['stock_key'].unique())
+            else:
+                margin_covered_stocks = set(df_risk['stock_key'].unique())
+
+            risk_sub = df_risk[['stock_key','avail_risk']].drop_duplicates('stock_key').copy()
+            if 'haircut_key' in df_risk.columns:
+                risk_sub = df_risk[['stock_key','avail_risk','haircut_key']].drop_duplicates('stock_key').copy()
+
+            # Margin Buy — nilai & lot transaksi BELI kemarin per SID
+            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={'SID':'sid_key','STOCK CODE':'stock_key'})
             df_mbuy.columns = df_mbuy.columns.str.strip()
             df_mbuy = clean_num(df_mbuy)
             df_mbuy['stock_key'] = df_mbuy['stock_key'].astype(str).str.strip().str.upper()
             df_mbuy['sid_key']   = df_mbuy['sid_key'].astype(str).str.strip()
 
-            # Margin Sell
-            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={
-                'SID':        'sid_key',
-                'STOCK CODE': 'stock_key',
-            })
+            # Margin Sell — nilai & lot transaksi JUAL kemarin per SID
+            df_msell = pd.read_csv(file_m_sell, sep='|', dtype=str).rename(columns={'SID':'sid_key','STOCK CODE':'stock_key'})
             df_msell.columns = df_msell.columns.str.strip()
             df_msell = clean_num(df_msell)
             df_msell['stock_key'] = df_msell['stock_key'].astype(str).str.strip().str.upper()
             df_msell['sid_key']   = df_msell['sid_key'].astype(str).str.strip()
 
-            # File Harga
+            # Closing Price
             price_map = load_price_file(file_price)
 
-            # ── 4b. VOLUME FORMULA ────────────────────────────
-            if 'Volume_Formula' not in df_inv.columns:
-                df_inv['_sign'] = df_inv['bors'].map({'B': 1, 'S': -1}).fillna(0)
-                df_inv['tot_vol'] = pd.to_numeric(
-                    df_inv['tot_vol'].astype(str).str.replace(',', ''), errors='coerce'
-                ).fillna(0)
-                df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
-                net_map = df_inv.groupby(['cid_key', 'stock_key'])['_signed_vol'].sum()
-                df_inv['vol_net_total'] = df_inv.set_index(
-                    ['cid_key', 'stock_key']).index.map(net_map)
+            # ── OUTSTANDING POSITION ─────────────────────────
+            # op_data[sid] = {stock: lot} — kolateral saham saat ini
+            # op_loan[sid] = {loan_existing, accrued_interest, available_limit, name}
+            op_stocks  = {}   # {sid: {stock: lot}}
+            op_loan    = {}   # {sid: {loan_existing, accrued_interest, available_limit, name}}
+            sid_to_cid = df_sid.set_index('sid_key')['cid_key'].to_dict()
+            cid_to_sid = df_sid.set_index('cid_key')['sid_key'].to_dict()
+            cid_to_name= df_sid.drop_duplicates('cid_key').set_index('cid_key')['name_key'].to_dict() if 'name_key' in df_sid.columns else {}
 
+            content = file_ep.read().decode('utf-8')
+            current_sid = None
+            for line in content.strip().splitlines():
+                parts = line.strip().split('|')
+                if not parts: continue
+                if parts[0] == '0':
+                    current_sid = parts[3].strip() if len(parts) > 3 else None
+                    if current_sid:
+                        try: loan_ex = float(parts[5]) if len(parts) > 5 else 0.0
+                        except: loan_ex = 0.0
+                        try: accrued = float(parts[6]) if len(parts) > 6 else 0.0
+                        except: accrued = 0.0
+                        try: avail_lim = float(parts[7]) if len(parts) > 7 else 0.0
+                        except: avail_lim = 0.0
+                        name = parts[4].strip() if len(parts) > 4 else current_sid
+                        op_loan[current_sid] = {
+                            'loan_existing': loan_ex,
+                            'accrued_interest': accrued,
+                            'available_limit': avail_lim,
+                            'name': name,
+                        }
+                        op_stocks[current_sid] = {}
+                elif parts[0] == '1' and current_sid:
+                    if len(parts) < 5: continue
+                    stock = parts[3].strip().upper()
+                    try: vol = float(parts[4])
+                    except: vol = 0.0
+                    if stock and vol > 0:
+                        op_stocks[current_sid][stock] = op_stocks[current_sid].get(stock, 0) + vol
+
+            # ── VOLUME FORMULA ────────────────────────────────
+            if 'Volume_Formula' not in df_inv.columns:
+                df_inv['_sign'] = df_inv['bors'].map({'B':1,'S':-1}).fillna(0)
+                df_inv['tot_vol'] = pd.to_numeric(df_inv['tot_vol'].astype(str).str.replace(',',''), errors='coerce').fillna(0)
+                df_inv['_signed_vol'] = df_inv['tot_vol'] * df_inv['_sign']
+                net_map = df_inv.groupby(['cid_key','stock_key'])['_signed_vol'].sum()
+                df_inv['vol_net_total'] = df_inv.set_index(['cid_key','stock_key']).index.map(net_map)
                 def calc_vol_formula(row):
                     total = row['vol_net_total']
                     vol   = row['tot_vol']
-                    if total < 0:
-                        return -vol if row['bors'] == 'S' else 0
-                    elif total > 0:
-                        return vol if row['bors'] == 'B' else 0
+                    if total < 0: return -vol if row['bors'] == 'S' else 0
+                    elif total > 0: return vol if row['bors'] == 'B' else 0
                     return 0
-
                 df_inv['Volume_Formula'] = df_inv.apply(calc_vol_formula, axis=1)
             else:
-                df_inv['Volume_Formula'] = pd.to_numeric(
-                    df_inv['Volume_Formula'].astype(str).str.replace(',', ''),
-                    errors='coerce'
-                ).fillna(0)
+                df_inv['Volume_Formula'] = pd.to_numeric(df_inv['Volume_Formula'].astype(str).str.replace(',',''), errors='coerce').fillna(0)
 
-            if 'amt_pay' in df_inv.columns:
-                df_inv['amt_pay'] = pd.to_numeric(
-                    df_inv['amt_pay'].astype(str).str.replace(',', ''),
-                    errors='coerce'
-                ).fillna(0)
-
-            # ── 4c. FILTER NASABAH PEI ────────────────────────
             pei_cids = set(df_sid['cid_key'].astype(str).str.strip())
 
-            df_sid_unique = df_sid.drop_duplicates(subset='cid_key', keep='first')
-            sid_lookup = df_sid_unique.set_index('cid_key')[['sid_key', 'name_key']].to_dict('index')
+            # ── SELL REGULAR VALUE per SID (dari file Margin Sell) ──
+            # Ini nilai transaksi jual kemarin = RP Maks per nasabah
+            # {sid: {stock: {'lot_sell': x, 'value': y}}}
+            sell_reg_by_sid = {}
+            for _, row in df_msell.iterrows():
+                sid   = str(row.get('sid_key','')).strip()
+                stock = str(row.get('stock_key','')).strip().upper()
+                # coba ambil qty dan price dari kolom yang ada
+                qty   = pd.to_numeric(row.get('qty', row.get('QUANTITY', row.get('volume', 0))), errors='coerce') or 0
+                price_s = price_map.get(stock, 0)
+                val   = qty * price_s
+                if sid not in sell_reg_by_sid:
+                    sell_reg_by_sid[sid] = {}
+                if stock not in sell_reg_by_sid[sid]:
+                    sell_reg_by_sid[sid][stock] = {'lot_sell': 0, 'value': 0}
+                sell_reg_by_sid[sid][stock]['lot_sell'] += qty
+                sell_reg_by_sid[sid][stock]['value']    += val
 
-            risk_sub = df_risk[['stock_key', 'avail_risk']].drop_duplicates('stock_key').copy()
-            if 'haircut_key' in df_risk.columns:
-                risk_sub = df_risk[['stock_key', 'avail_risk', 'haircut_key']].drop_duplicates('stock_key').copy()
+            # ── MARGIN BUY VALUE per SID ─────────────────────
+            # {sid: {stock: {'lot_buy': x, 'value': y}}}
+            buy_reg_by_sid = {}
+            for _, row in df_mbuy.iterrows():
+                sid   = str(row.get('sid_key','')).strip()
+                stock = str(row.get('stock_key','')).strip().upper()
+                qty   = pd.to_numeric(row.get('qty', row.get('QUANTITY', row.get('volume', 0))), errors='coerce') or 0
+                price_b = price_map.get(stock, 0)
+                val   = qty * price_b
+                if sid not in buy_reg_by_sid:
+                    buy_reg_by_sid[sid] = {}
+                if stock not in buy_reg_by_sid[sid]:
+                    buy_reg_by_sid[sid][stock] = {'lot_buy': 0, 'value': 0}
+                buy_reg_by_sid[sid][stock]['lot_buy'] += qty
+                buy_reg_by_sid[sid][stock]['value']   += val
 
-            risk_lookup = risk_sub.set_index('stock_key').to_dict('index')
+            # ── HITUNG PER NASABAH ────────────────────────────
+            # Untuk setiap SID PEI, hitung:
+            # 1. RP Min, RP Maks, collateral after RP, loan after RP, rasio RP
+            # 2. Ceiling LR, collateral LR (setelah RP + saham beli baru), rasio LR, max LR
+            results = {}
+            pei_sids = set()
+            for _, row in df_sid.iterrows():
+                cid = str(row['cid_key']).strip()
+                sid = str(row['sid_key']).strip()
+                if cid in pei_cids:
+                    pei_sids.add(sid)
 
-            # ── 4d. PORTOFOLIO KOLATERAL (dari OP file) ───────
-            # Sekaligus ambil lot per (cid, stock) untuk hitung value = lot × price
-            porto_sheets     = {}
-            df_porto_all     = pd.DataFrame()
-            porto_coll_lookup = {}   # (cid, stock) → volume
-            op_lot_lookup     = {}   # (cid, stock) → lot dari OP (untuk repayment value)
+            for sid in pei_sids:
+                loan_info = op_loan.get(sid, {'loan_existing':0,'accrued_interest':0,'available_limit':0,'name':sid})
+                stocks_op = op_stocks.get(sid, {})
+                loan_ex   = loan_info['loan_existing']
+                accrued   = loan_info['accrued_interest']
+                avail_lim = loan_info['available_limit']
+                name      = loan_info['name']
 
-            if file_ep is not None:
-                content = file_ep.read().decode('utf-8')
-                current_sid = None
-                porto_rows  = []
+                sell_stocks = sell_reg_by_sid.get(sid, {})
+                buy_stocks  = buy_reg_by_sid.get(sid, {})
 
-                for line in content.strip().splitlines():
-                    parts = line.strip().split('|')
-                    if not parts:
-                        continue
-                    if parts[0] == '0':
-                        current_sid = parts[3].strip() if len(parts) > 3 else None
-                    elif parts[0] == '1' and current_sid:
-                        if len(parts) < 5:
-                            continue
-                        stock = parts[3].strip().upper() if len(parts) > 3 else ''
-                        vol   = pd.to_numeric(parts[4], errors='coerce') if len(parts) > 4 else 0
-                        vol   = vol if pd.notna(vol) else 0
-                        if stock and vol > 0:
-                            sid_match = df_sid[df_sid['sid_key'].astype(str).str.strip() == current_sid]
-                            if not sid_match.empty:
-                                cid = str(sid_match['cid_key'].values[0]).strip()
-                                porto_coll_lookup[(cid, stock)] = vol
-                                op_lot_lookup[(cid, stock)]     = vol  # lot dari OP
-                                porto_rows.append({
-                                    'CID':       cid,
-                                    'SID':       current_sid,
-                                    'stock_key': stock,
-                                    'coll_vol':  vol,
-                                })
+                # ── RP CALCULATION ──
+                rp_detail = []
+                for stock, sdata in sell_stocks.items():
+                    lot_sell = sdata['lot_sell']
+                    lot_op   = stocks_op.get(stock, 0)
+                    lot_keluar = min(lot_sell, lot_op)   # saham yang bisa keluar dari kolateral
+                    price_s  = price_map.get(stock, 0)
+                    rp_min   = lot_keluar * price_s      # nilai minimum RP (sesuai lot di OP)
+                    rp_maks  = sdata['value']            # nilai maksimum RP (nilai transaksi jual kemarin)
+                    ada_di_op = lot_op > 0
+                    rp_detail.append({
+                        'stock':      stock,
+                        'lot_sell':   lot_sell,
+                        'lot_op':     lot_op,
+                        'lot_keluar': lot_keluar,
+                        'price':      price_s,
+                        'rp_min':     rp_min,
+                        'rp_maks':    rp_maks,
+                        'ada_di_op':  ada_di_op,
+                    })
 
-                if porto_rows:
-                    df_porto_all = pd.DataFrame(porto_rows)
-                    df_porto_all = df_porto_all.merge(
-                        df_sid[['cid_key', 'name_key']].rename(
-                            columns={'cid_key': 'CID', 'name_key': 'Name'}
-                        ),
-                        on='CID', how='left'
-                    )
-                    porto_sheets = dict(tuple(df_porto_all.groupby('CID')))
+                total_rp_maks = sum(d['rp_maks'] for d in rp_detail if d['ada_di_op'])
+                total_rp_min  = sum(d['rp_min']  for d in rp_detail if d['ada_di_op'])
 
-            st.session_state['porto_coll_lookup'] = porto_coll_lookup
-            st.session_state['sid_cid_map'] = df_sid.set_index('sid_key')['cid_key'].to_dict()
+                # Collateral setelah RP (saham yang keluar dikurangi dari OP)
+                stocks_after_rp = dict(stocks_op)
+                for d in rp_detail:
+                    if d['ada_di_op'] and d['lot_keluar'] > 0:
+                        stocks_after_rp[d['stock']] = stocks_after_rp.get(d['stock'], 0) - d['lot_keluar']
+                        if stocks_after_rp[d['stock']] <= 0:
+                            del stocks_after_rp[d['stock']]
 
-            # Tambah kolateral pending dari LR file
-            if file_lr is not None:
-                sid_to_cid = df_sid.set_index('sid_key')['cid_key'].to_dict()
-                lr_coll    = parse_lr_collateral(file_lr)
-                for (sid, stock), qty in lr_coll.items():
-                    cid = sid_to_cid.get(sid, None)
-                    if cid:
-                        key = (cid, stock)
-                        porto_coll_lookup[key] = porto_coll_lookup.get(key, 0) + qty
-                        op_lot_lookup[key]     = op_lot_lookup.get(key, 0) + qty
+                coll_before_rp, _ = calc_collateral_value(stocks_op,        price_map, risk_params)
+                coll_after_rp,  _ = calc_collateral_value(stocks_after_rp,  price_map, risk_params)
 
-            # ── 4e. SHEET BUY ─────────────────────────────────
-            # STEP 1 filter: hanya saham yang dicover margin PEI
-            df_buy_inv = df_inv[
-                (df_inv['bors'] == 'B') &
-                (df_inv['cid_key'].isin(pei_cids)) &
-                (df_inv['Volume_Formula'].abs() > 0) &
-                (df_inv['stock_key'].isin(margin_covered_stocks))   # ← STEP 1
-            ].copy()
+                loan_after_rp = max(loan_ex - total_rp_maks, 0)
+                rasio_rp = (loan_after_rp + accrued) / coll_after_rp if coll_after_rp > 0 else None
 
-            if df_buy_inv.empty:
-                buy_out = pd.DataFrame(columns=[
-                    'SID','STOCK CODE','MARGIN BUY QUANTITY','LOAN QUANTITY',
-                    'AVAILABLE QUANTITY','CLOSING PRICE','AVAILABLE MARKET VALUE',
-                    'HAIRCUT','AVAILABLE COLLATERAL VALUE','B/S','CID','Name',
-                    'Stock','Volume','Value (Lot×Price)','PEI (Risk/Porto)','NETT'
-                ])
-            else:
-                if 'sid_key' not in df_buy_inv.columns:
-                    buy_merged = df_buy_inv.merge(
-                        df_sid[['cid_key', 'sid_key', 'name_key']], on='cid_key', how='left'
-                    ).merge(df_mbuy, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m'))
-                else:
-                    buy_merged = df_buy_inv.merge(
-                        df_mbuy, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
-                    )
+                # ── LR CALCULATION ──
+                # Collateral LR = collateral after RP + saham beli baru
+                stocks_after_lr = dict(stocks_after_rp)
+                for stock, bdata in buy_stocks.items():
+                    stocks_after_lr[stock] = stocks_after_lr.get(stock, 0) + bdata['lot_buy']
 
-                buy_merged = buy_merged.merge(risk_sub, on='stock_key', how='left')
+                coll_after_lr, _ = calc_collateral_value(stocks_after_lr, price_map, risk_params)
 
-                # STEP 4: Value = Lot × Price (closing price dari file harga)
-                def calc_buy_value(row):
-                    cid   = str(row.get('cid_key', '')).strip()
-                    stock = str(row.get('stock_key', '')).strip().upper()
-                    lot   = abs(pd.to_numeric(row.get('Volume_Formula', 0), errors='coerce') or 0)
-                    price = price_map.get(stock, 0)
-                    return lot * price
+                total_buy_val = sum(b['value'] for b in buy_stocks.values())
+                # Ceiling LR = min(nilai beli kemarin, avail_limit + rp_maks)
+                avail_efektif = avail_lim + total_rp_maks
+                ceiling_lr    = min(total_buy_val, avail_efektif)
 
-                buy_out = pd.DataFrame()
-                buy_out['SID']        = buy_merged.get('sid_key', '')
-                buy_out['STOCK CODE'] = buy_merged['stock_key']
-                for col in ['MARGIN BUY QUANTITY', 'LOAN QUANTITY', 'AVAILABLE QUANTITY',
-                            'CLOSING PRICE', 'AVAILABLE MARKET VALUE', 'HAIRCUT',
-                            'AVAILABLE COLLATERAL VALUE']:
-                    buy_out[col] = buy_merged[col] if col in buy_merged.columns else 0
-                buy_out['B/S']              = 'B'
-                buy_out['CID']              = buy_merged['cid_key']
-                buy_out['Name']             = buy_merged.get('name_key', '')
-                buy_out['Stock']            = buy_merged['stock_key']
-                buy_out['Volume']           = buy_merged['Volume_Formula'].abs()
-                buy_out['Value (Lot×Price)'] = buy_merged.apply(calc_buy_value, axis=1)
-                buy_out['PEI (Risk/Porto)'] = buy_merged.get('avail_risk', 0)
+                # Rasio LR = (loan_after_rp + accrued + lr_diajukan) / coll_after_lr
+                numerator_lr = loan_after_rp + accrued + ceiling_lr
+                rasio_lr     = numerator_lr / coll_after_lr if coll_after_lr > 0 else None
 
-                def nett_buy(row):
-                    p = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce')
-                    s = pd.to_numeric(row['Volume'], errors='coerce')
-                    if pd.isna(p) or p == 0: return 'NON MARGIN'
-                    if p > 0:
-                        if pd.isna(s) or s < 0: return ''
-                        return 'LOAN PEI' if s > p else 'LOAN PARTIAL'
-                    return ''
+                # Max LR agar rasio = 63%
+                max_lr_63 = max(coll_after_lr * 0.63 - (loan_after_rp + accrued), 0) if coll_after_lr > 0 else 0
+                max_lr_65 = max(coll_after_lr * 0.65 - (loan_after_rp + accrued), 0) if coll_after_lr > 0 else 0
+                max_lr_final = min(ceiling_lr, max_lr_65)
 
-                buy_out['NETT'] = buy_out.apply(nett_buy, axis=1)
+                results[sid] = {
+                    'name':           name,
+                    'cid':            sid_to_cid.get(sid, sid),
+                    'loan_existing':  loan_ex,
+                    'accrued':        accrued,
+                    'avail_limit':    avail_lim,
+                    # RP
+                    'rp_detail':      rp_detail,
+                    'total_rp_maks':  total_rp_maks,
+                    'total_rp_min':   total_rp_min,
+                    'stocks_op':      stocks_op,
+                    'stocks_after_rp':stocks_after_rp,
+                    'coll_before_rp': coll_before_rp,
+                    'coll_after_rp':  coll_after_rp,
+                    'loan_after_rp':  loan_after_rp,
+                    'rasio_rp':       rasio_rp,
+                    # LR
+                    'buy_stocks':     buy_stocks,
+                    'stocks_after_lr':stocks_after_lr,
+                    'coll_after_lr':  coll_after_lr,
+                    'total_buy_val':  total_buy_val,
+                    'avail_efektif':  avail_efektif,
+                    'ceiling_lr':     ceiling_lr,
+                    'rasio_lr':       rasio_lr,
+                    'max_lr_63':      max_lr_63,
+                    'max_lr_65':      max_lr_65,
+                    'max_lr_final':   max_lr_final,
+                }
 
-            # ── 4f. SHEET SELL ────────────────────────────────
-            # STEP 1 filter: hanya saham yang dicover margin PEI
-            df_sell_inv = df_inv[
-                (df_inv['bors'] == 'S') &
-                (df_inv['cid_key'].isin(pei_cids)) &
-                (df_inv['Volume_Formula'].abs() > 0) &
-                (df_inv['stock_key'].isin(margin_covered_stocks))   # ← STEP 1
-            ].copy()
-
-            if df_sell_inv.empty:
-                sell_out = pd.DataFrame(columns=[
-                    'SID','STOCK CODE','REGULAR SELL QUANTITY','REPAYMENT QUANTITY',
-                    'AVAILABLE SELL QUANTITY','CLOSING PRICE','AVAILABLE SELL VALUE',
-                    'B/S','CID','Name','Stock','Volume',
-                    'Value (Lot×Price)','PEI (Risk/Porto)','Ada di Kolateral','NETT'
-                ])
-            else:
-                if 'sid_key' not in df_sell_inv.columns:
-                    sell_merged = df_sell_inv.merge(
-                        df_sid[['cid_key', 'sid_key', 'name_key']], on='cid_key', how='left'
-                    ).merge(df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m'))
-                else:
-                    sell_merged = df_sell_inv.merge(
-                        df_msell, on=['sid_key', 'stock_key'], how='left', suffixes=('', '_m')
-                    )
-
-                sell_merged = sell_merged.merge(risk_sub, on='stock_key', how='left')
-
-                # STEP 3: Value = Lot (dari OP) × Closing Price (dari file harga)
-                def calc_sell_value(row):
-                    cid   = str(row.get('cid_key', '')).strip()
-                    stock = str(row.get('stock_key', '')).strip().upper()
-                    # Lot dari OP file; fallback ke Volume_Formula jika tidak ada di OP
-                    lot   = op_lot_lookup.get((cid, stock),
-                            abs(pd.to_numeric(row.get('Volume_Formula', 0), errors='coerce') or 0))
-                    price = price_map.get(stock, 0)
-                    return lot * price
-
-                # STEP 3: Cek apakah saham ada di kolateral client (OP file)
-                def cek_kolateral(row):
-                    cid   = str(row.get('cid_key', '')).strip()
-                    stock = str(row.get('stock_key', '')).strip().upper()
-                    return 'YA' if (cid, stock) in porto_coll_lookup else 'TIDAK'
-
-                def get_pei_sell(row):
-                    cid   = str(row.get('cid_key', '')).strip()
-                    stock = str(row.get('stock_key', '')).strip().upper()
-                    vol   = porto_coll_lookup.get((cid, stock), 0)
-                    return -vol
-
-                sell_out = pd.DataFrame()
-                sell_out['SID']        = sell_merged.get('sid_key', '')
-                sell_out['STOCK CODE'] = sell_merged['stock_key']
-                for col in ['REGULAR SELL QUANTITY', 'REPAYMENT QUANTITY',
-                            'AVAILABLE SELL QUANTITY', 'CLOSING PRICE', 'AVAILABLE SELL VALUE']:
-                    sell_out[col] = sell_merged[col] if col in sell_merged.columns else 0
-                sell_out['B/S']              = 'S'
-                sell_out['CID']              = sell_merged['cid_key']
-                sell_out['Name']             = sell_merged.get('name_key', '')
-                sell_out['Stock']            = sell_merged['stock_key']
-                sell_out['Volume']           = sell_merged['Volume_Formula'].abs()
-                sell_out['Value (Lot×Price)'] = sell_merged.apply(calc_sell_value, axis=1)
-                sell_out['Ada di Kolateral'] = sell_merged.apply(cek_kolateral, axis=1)
-                sell_out['PEI (Risk/Porto)'] = sell_merged.apply(get_pei_sell, axis=1)
-
-                def nett_sell(row):
-                    # STEP 3: Jika saham tidak ada di kolateral → baris ini di-exclude (tandai EXCLUDED)
-                    if row['Ada di Kolateral'] == 'TIDAK':
-                        return 'EXCLUDED (tidak ada di kolateral)'
-                    p = pd.to_numeric(row['PEI (Risk/Porto)'], errors='coerce')
-                    s = pd.to_numeric(row['Volume'], errors='coerce')
-                    if pd.isna(p) or p == 0: return 'NON MARGIN'
-                    if p < 0:
-                        if pd.isna(s) or s == 0: return ''
-                        return 'REPAY PEI' if s < abs(p) else 'ALL STOCK REPAY'
-                    return ''
-
-                sell_out['NETT'] = sell_out.apply(nett_sell, axis=1)
-
-            # ── 4g. LOAN REQUEST ──────────────────────────────
-            loan_req_rows = []
-            if not df_porto_all.empty and 'coll_vol' in df_porto_all.columns:
-                df_porto_risk = df_porto_all.merge(risk_sub, on='stock_key', how='left')
-
-                for _, row in df_porto_risk.iterrows():
-                    vol = pd.to_numeric(row.get('coll_vol', 0), errors='coerce') or 0
-                    if vol > 0:
-                        stock  = str(row.get('stock_key', '')).strip().upper()
-                        price  = price_map.get(stock, 0)
-                        hc_pct = pd.to_numeric(row.get('haircut_key', 5), errors='coerce') or 5
-                        cv     = vol * price * (1 - hc_pct / 100)
-                        loan_req_rows.append({
-                            'CID':              row.get('CID', ''),
-                            'Name':             row.get('Name', ''),
-                            'Stock':            stock,
-                            'HC (%)':           hc_pct,
-                            'Collateral Vol':   vol,
-                            'Price (STK_CLOS)': price,
-                            'Collateral Value': cv,
-                            'Loan Eligible':    cv,
-                            'Status':           'STOCK DEPOSIT',
-                        })
-
-            df_loan_req = pd.DataFrame(loan_req_rows)
-
-            # ── 4h. SUMMARY ───────────────────────────────────
-            # Sell aktif = hanya yang ADA di kolateral (exclude baris EXCLUDED)
-            sell_aktif = sell_out[sell_out['NETT'] != 'EXCLUDED (tidak ada di kolateral)'] if not sell_out.empty else sell_out
-
-            summary_buy = buy_out.groupby(['CID', 'Name']).agg(
-                Total_Volume=('Volume', 'sum'),
-                Total_Value=('Value (Lot×Price)', 'sum'),
-            ).reset_index() if not buy_out.empty else pd.DataFrame()
-
-            summary_sell = sell_aktif.groupby(['CID', 'Name']).agg(
-                Total_Volume=('Volume', 'sum'),
-                Total_Value=('Value (Lot×Price)', 'sum'),
-            ).reset_index() if not sell_aktif.empty else pd.DataFrame()
-
-            # Hitung jumlah baris excluded
-            n_excluded = len(sell_out[sell_out['NETT'] == 'EXCLUDED (tidak ada di kolateral)']) if not sell_out.empty else 0
-
-        # ─────────────────────────────────────────────────────────────
-        # 5. TAMPILKAN HASIL
-        # ─────────────────────────────────────────────────────────────
+        st.session_state['pei_results'] = results
+        st.session_state['price_map']   = price_map
+        st.session_state['risk_params'] = risk_params
         st.success("✅ Data Berhasil Diproses!")
-
-        col_m1, col_m2, col_m3, col_m4, col_m5 = st.columns(5)
-        col_m1.metric("Nasabah PEI Terdaftar",  len(pei_cids))
-        col_m2.metric("Saham Dicover Margin",    len(margin_covered_stocks))
-        col_m3.metric("Baris BUY (Loan)",        len(buy_out))
-        col_m4.metric("Baris SELL (Repay)",       len(sell_aktif))
-        col_m5.metric("Sell Excluded (tdk ada di kolateral)", n_excluded,
-                       delta=f"-{n_excluded}" if n_excluded else None, delta_color="inverse")
-
-        # ─────────────────────────────────────────────────────────────
-        # 6. DOWNLOAD EXCEL
-        # ─────────────────────────────────────────────────────────────
-        out = io.BytesIO()
-        with pd.ExcelWriter(out, engine='openpyxl') as wr:
-            buy_out.to_excel(wr,       index=False, sheet_name='Buy (Loan)')
-            sell_out.to_excel(wr,      index=False, sheet_name='Sell (Repayment)')
-            sell_aktif.to_excel(wr,    index=False, sheet_name='Sell Aktif (tanpa excluded)')
-            if not df_porto_all.empty:
-                for cid_sheet, df_p in porto_sheets.items():
-                    safe_name = f"Porto_{cid_sheet}"[:31]
-                    df_p.to_excel(wr, index=False, sheet_name=safe_name)
-                df_porto_all.to_excel(wr, index=False, sheet_name='Portofolio_All')
-            if not df_loan_req.empty:
-                df_loan_req.to_excel(wr, index=False, sheet_name='Loan Request')
-            if not summary_buy.empty:
-                summary_buy.to_excel(wr,  index=False, sheet_name='Summary Buy')
-            if not summary_sell.empty:
-                summary_sell.to_excel(wr, index=False, sheet_name='Summary Sell')
-
-        st.download_button(
-            "📥 Download Hasil_TRX_PEI.xlsx",
-            out.getvalue(),
-            "Hasil_TRX_PEI.xlsx",
-            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
-        )
-
-        st.divider()
-
-        # ─────────────────────────────────────────────────────────────
-        # 7. TABS PREVIEW
-        # ─────────────────────────────────────────────────────────────
-        tabs = ["📊 BUY (Loan)", "📊 SELL (Repayment)"]
-        if not df_porto_all.empty:
-            tabs += ["🏦 Portofolio Kolateral"]
-        if not df_loan_req.empty:
-            tabs += ["💰 Loan Request"]
-        tabs += ["📋 Summary"]
-
-        tab_objs = st.tabs(tabs)
-        idx = 0
-
-        with tab_objs[idx]:
-            idx += 1
-            st.caption(f"Total {len(buy_out)} baris · hanya nasabah PEI · hanya saham dicover margin")
-            if not buy_out.empty:
-                def color_nett(val):
-                    if val == 'LOAN PEI':     return 'background-color:#d4edda;color:#155724'
-                    if val == 'LOAN PARTIAL': return 'background-color:#fff3cd;color:#856404'
-                    return ''
-                st.dataframe(buy_out.style.map(color_nett, subset=['NETT']), use_container_width=True)
-            else:
-                st.info("Tidak ada transaksi BUY nasabah PEI pada hari ini.")
-
-        with tab_objs[idx]:
-            idx += 1
-            st.caption(
-                f"Total {len(sell_out)} baris · "
-                f"{len(sell_aktif)} aktif · "
-                f"{n_excluded} excluded (saham tidak ada di kolateral)"
-            )
-            if not sell_out.empty:
-                def color_nett_sell(val):
-                    if val == 'REPAY PEI':       return 'background-color:#cce5ff;color:#004085'
-                    if val == 'ALL STOCK REPAY': return 'background-color:#d4edda;color:#155724'
-                    if 'EXCLUDED' in str(val):   return 'background-color:#f8d7da;color:#721c24'
-                    return ''
-                st.dataframe(sell_out.style.map(color_nett_sell, subset=['NETT']), use_container_width=True)
-            else:
-                st.info("Tidak ada transaksi SELL nasabah PEI pada hari ini.")
-
-        if not df_porto_all.empty:
-            with tab_objs[idx]:
-                idx += 1
-                st.caption("Portofolio saham yang dijadikan kolateral PEI, dikelompokkan per nasabah")
-                cid_options  = ['Semua'] + list(porto_sheets.keys())
-                selected_cid = st.selectbox("Filter Nasabah:", cid_options, key='porto_filter')
-                show_df = df_porto_all if selected_cid == 'Semua' else porto_sheets[selected_cid]
-                disp = show_df.copy()
-                for c in ['coll_vol']:
-                    if c in disp.columns:
-                        disp[c] = pd.to_numeric(disp[c], errors='coerce').fillna(0)
-                st.dataframe(disp, use_container_width=True)
-
-        if not df_loan_req.empty:
-            with tab_objs[idx]:
-                idx += 1
-                st.caption("Saham yang didepositkan sebagai kolateral dan nilai loan yang dapat diajukan")
-                disp_loan = df_loan_req.copy()
-                for c in ['Collateral Vol', 'Price (STK_CLOS)', 'Collateral Value', 'Loan Eligible']:
-                    if c in disp_loan.columns:
-                        disp_loan[c] = pd.to_numeric(disp_loan[c], errors='coerce').fillna(0)
-                st.dataframe(disp_loan, use_container_width=True)
-                total_loan = disp_loan['Loan Eligible'].sum()
-                st.metric("Total Loan Eligible (semua nasabah)", fmt_rp(total_loan))
-
-        with tab_objs[idx]:
-            st.subheader("📋 Summary BUY (Loan PEI)")
-            if not summary_buy.empty:
-                st.dataframe(summary_buy, use_container_width=True)
-            else:
-                st.info("Tidak ada transaksi BUY.")
-            st.subheader("📋 Summary SELL Aktif (Repayment PEI)")
-            if not summary_sell.empty:
-                st.dataframe(summary_sell, use_container_width=True)
-            else:
-                st.info("Tidak ada transaksi SELL aktif.")
 
     except Exception as e:
         st.error(f"❌ Gagal memproses data: {e}")
         st.exception(e)
 
+# ─────────────────────────────────────────────
+# TAMPILKAN HASIL
+# ─────────────────────────────────────────────
+if st.session_state.get('pei_results'):
+    results    = st.session_state['pei_results']
+    price_map  = st.session_state['price_map']
+    risk_params= st.session_state['risk_params']
+
+    n_has_rp = sum(1 for v in results.values() if v['total_rp_maks'] > 0)
+    n_has_lr = sum(1 for v in results.values() if v['total_buy_val'] > 0)
+    n_rp_lolos = sum(1 for v in results.values() if v['rasio_rp'] is not None and v['rasio_rp'] < 0.65)
+    n_lr_lolos = sum(1 for v in results.values() if v['rasio_lr'] is not None and v['rasio_lr'] < 0.65)
+
+    m1,m2,m3,m4,m5 = st.columns(5)
+    m1.metric("Total Nasabah PEI", len(results))
+    m2.metric("Nasabah Ada RP", n_has_rp)
+    m3.metric("Nasabah Ada LR", n_has_lr)
+    m4.metric("RP Lolos Rasio", n_rp_lolos)
+    m5.metric("LR Lolos Rasio", n_lr_lolos)
+
+    tab_rp, tab_lr, tab_simulator, tab_summary, tab_export = st.tabs([
+        "📤 LANGKAH 1 — Repayment (RP)",
+        "📥 LANGKAH 2 — Loan Request (LR)",
+        "🎛️ Simulator RP → LR",
+        "📋 Summary",
+        "📥 Export",
+    ])
+
+    # ── TAB RP ────────────────────────────────────────────────
+    with tab_rp:
+        st.info("💡 Input RP **terlebih dahulu** pagi ini. Setelah RP diinput, available limit nasabah naik dan kolateral berkurang.")
+        rp_rows = []
+        for sid, d in results.items():
+            if d['total_rp_maks'] <= 0: continue
+            for rd in d['rp_detail']:
+                if not rd['ada_di_op']: continue
+                rasio_val = f"{d['rasio_rp']*100:.2f}%" if d['rasio_rp'] is not None else "N/A"
+                status_rasio = "✅ LOLOS" if d['rasio_rp'] is not None and d['rasio_rp'] < 0.65 else "❌ GAGAL"
+                rp_rows.append({
+                    'SID':              sid,
+                    'Nama':             d['name'],
+                    'Saham':            rd['stock'],
+                    'Lot Transaksi Jual':int(rd['lot_sell']),
+                    'Lot di OP':        int(rd['lot_op']),
+                    'Lot Keluar Kolateral': int(rd['lot_keluar']),
+                    'Harga':            rd['price'],
+                    'RP Min (Lot OP × Harga)':   rd['rp_min'],
+                    'RP Maks (Nilai Jual Kemarin)': rd['rp_maks'],
+                    'Loan Before RP':   d['loan_existing'],
+                    'Loan After RP':    d['loan_after_rp'],
+                    'Coll After RP':    d['coll_after_rp'],
+                    'Rasio After RP':   rasio_val,
+                    'Status Rasio':     status_rasio,
+                })
+
+        if rp_rows:
+            df_rp = pd.DataFrame(rp_rows)
+            def color_rp(val):
+                if val == '✅ LOLOS': return 'background-color:#d4edda;color:#155724'
+                if val == '❌ GAGAL': return 'background-color:#f8d7da;color:#721c24'
+                return ''
+            st.dataframe(df_rp.style.map(color_rp, subset=['Status Rasio']), use_container_width=True)
+
+            st.subheader("Rekap RP per Nasabah")
+            rekap_rp = []
+            for sid, d in results.items():
+                if d['total_rp_maks'] <= 0: continue
+                rekap_rp.append({
+                    'SID':          sid,
+                    'Nama':         d['name'],
+                    'Loan Existing':fmt_rp(d['loan_existing']),
+                    'Coll Before RP':fmt_rp(d['coll_before_rp']),
+                    'RP Min':       fmt_rp(d['total_rp_min']),
+                    'RP Maks':      fmt_rp(d['total_rp_maks']),
+                    'Loan After RP':fmt_rp(d['loan_after_rp']),
+                    'Coll After RP':fmt_rp(d['coll_after_rp']),
+                    'Rasio After RP': f"{d['rasio_rp']*100:.2f}%" if d['rasio_rp'] is not None else "N/A",
+                    'Status':       "✅ LOLOS" if d['rasio_rp'] is not None and d['rasio_rp'] < 0.65 else ("⚠️ Coll=0" if d['coll_after_rp']==0 else "❌ GAGAL"),
+                })
+            st.dataframe(pd.DataFrame(rekap_rp), use_container_width=True, hide_index=True)
+        else:
+            st.info("Tidak ada nasabah PEI dengan transaksi jual kemarin.")
+
+    # ── TAB LR ────────────────────────────────────────────────
+    with tab_lr:
+        st.info("💡 Input LR **setelah RP diinput**. Ceiling LR = min(Nilai Beli Kemarin, Avail Limit + RP). Collateral sudah ditambah saham beli baru.")
+        lr_rows = []
+        for sid, d in results.items():
+            if d['total_buy_val'] <= 0: continue
+            rasio_val = f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "N/A"
+            status_rasio = "✅ LOLOS" if d['rasio_lr'] is not None and d['rasio_lr'] < 0.65 else "❌ GAGAL (perlu dipotong)"
+            for stock, bdata in d['buy_stocks'].items():
+                lr_rows.append({
+                    'SID':              sid,
+                    'Nama':             d['name'],
+                    'Saham Beli':       stock,
+                    'Lot Beli Kemarin': int(bdata['lot_buy']),
+                    'Harga':            price_map.get(stock, 0),
+                    'Nilai Beli':       bdata['value'],
+                    'RP Lolos (pagi)':  d['total_rp_maks'],
+                    'Avail Limit':      d['avail_limit'],
+                    'Avail Efektif':    d['avail_efektif'],
+                    'Ceiling LR':       d['ceiling_lr'],
+                    'Loan After RP':    d['loan_after_rp'],
+                    'Coll After LR':    d['coll_after_lr'],
+                    'Numerator LR':     d['loan_after_rp'] + d['accrued'] + d['ceiling_lr'],
+                    'Rasio LR':         rasio_val,
+                    'Max LR (63%)':     d['max_lr_63'],
+                    'Max LR Final':     d['max_lr_final'],
+                    'Status Rasio':     status_rasio,
+                })
+
+        if lr_rows:
+            df_lr = pd.DataFrame(lr_rows)
+            def color_lr(val):
+                if val == '✅ LOLOS': return 'background-color:#d4edda;color:#155724'
+                if '❌' in str(val):  return 'background-color:#f8d7da;color:#721c24'
+                return ''
+            st.dataframe(df_lr.style.map(color_lr, subset=['Status Rasio']), use_container_width=True)
+
+            st.subheader("Rekap LR per Nasabah")
+            rekap_lr = []
+            for sid, d in results.items():
+                if d['total_buy_val'] <= 0: continue
+                rekap_lr.append({
+                    'SID':           sid,
+                    'Nama':          d['name'],
+                    'Ceiling LR':    fmt_rp(d['ceiling_lr']),
+                    'Loan After RP': fmt_rp(d['loan_after_rp']),
+                    'Coll After LR': fmt_rp(d['coll_after_lr']),
+                    'Rasio LR':      f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "N/A",
+                    'Max LR (63%)':  fmt_rp(d['max_lr_63']),
+                    'Max LR Final':  fmt_rp(d['max_lr_final']),
+                    'Status':        "✅ LOLOS" if d['rasio_lr'] is not None and d['rasio_lr'] < 0.65 else "❌ Perlu dipotong",
+                })
+            st.dataframe(pd.DataFrame(rekap_lr), use_container_width=True, hide_index=True)
+        else:
+            st.info("Tidak ada nasabah PEI dengan transaksi beli kemarin.")
+
+    # ── TAB SIMULATOR ─────────────────────────────────────────
+    with tab_simulator:
+        st.subheader("🎛️ Simulator — Ubah Nilai RP dan Lihat Dampak ke LR")
+        st.info("Ubah nilai RP yang akan diinput. Sistem akan menghitung ulang rasio RP, loan after RP, collateral, dan max LR secara otomatis.")
+
+        sid_options = [sid for sid, d in results.items() if d['total_rp_maks'] > 0 or d['total_buy_val'] > 0]
+        if not sid_options:
+            st.warning("Tidak ada nasabah dengan transaksi RP atau LR.")
+        else:
+            selected_sid = st.selectbox("Pilih Nasabah (SID):", sid_options,
+                format_func=lambda s: f"{s} — {results[s]['name']}")
+            d = results[selected_sid]
+
+            st.divider()
+            col_info1, col_info2, col_info3 = st.columns(3)
+            col_info1.metric("Loan Outstanding", fmt_rp(d['loan_existing']))
+            col_info2.metric("Collateral Awal (OP)", fmt_rp(d['coll_before_rp']))
+            col_info3.metric("Current Ratio", f"{(d['loan_existing']/d['coll_before_rp']*100):.2f}%" if d['coll_before_rp'] > 0 else "N/A")
+
+            st.subheader("Step 1 — Atur Nilai RP per Saham")
+            st.caption(f"Range RP: Min = Lot OP × Harga | Maks = Nilai Transaksi Jual Kemarin")
+
+            rp_inputs = {}
+            for rd in d['rp_detail']:
+                if not rd['ada_di_op']: continue
+                col_s1, col_s2, col_s3, col_s4 = st.columns([2,1,1,2])
+                with col_s1:
+                    st.markdown(f"**{rd['stock']}**  \nLot Jual: {int(rd['lot_sell']):,} | Lot OP: {int(rd['lot_op']):,}")
+                with col_s2:
+                    st.caption("RP Min")
+                    st.write(fmt_rp(rd['rp_min']))
+                with col_s3:
+                    st.caption("RP Maks")
+                    st.write(fmt_rp(rd['rp_maks']))
+                with col_s4:
+                    rp_val = st.number_input(
+                        f"RP Value untuk {rd['stock']}",
+                        min_value=float(rd['rp_min']),
+                        max_value=float(rd['rp_maks']),
+                        value=float(rd['rp_maks']),
+                        step=1_000_000.0,
+                        format="%.0f",
+                        key=f"rp_input_{selected_sid}_{rd['stock']}",
+                        label_visibility="collapsed"
+                    )
+                rp_inputs[rd['stock']] = {
+                    'rp_value':   rp_val,
+                    'lot_keluar': rd['lot_keluar'],
+                    'stock':      rd['stock'],
+                }
+
+            total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
+
+            # Hitung ulang setelah simulator
+            stocks_after_rp_sim = dict(d['stocks_op'])
+            for stock, v in rp_inputs.items():
+                if v['lot_keluar'] > 0:
+                    stocks_after_rp_sim[stock] = stocks_after_rp_sim.get(stock, 0) - v['lot_keluar']
+                    if stocks_after_rp_sim[stock] <= 0:
+                        del stocks_after_rp_sim[stock]
+
+            coll_after_rp_sim, coll_detail_rp = calc_collateral_value(stocks_after_rp_sim, price_map, risk_params)
+            loan_after_rp_sim = max(d['loan_existing'] - total_rp_sim, 0)
+            rasio_rp_sim = (loan_after_rp_sim + d['accrued']) / coll_after_rp_sim if coll_after_rp_sim > 0 else None
+
+            st.divider()
+            st.subheader("Hasil Setelah RP")
+            res_col1, res_col2, res_col3, res_col4 = st.columns(4)
+            res_col1.metric("Total RP Diinput", fmt_rp(total_rp_sim))
+            res_col2.metric("Loan After RP", fmt_rp(loan_after_rp_sim))
+            res_col3.metric("Collateral After RP", fmt_rp(coll_after_rp_sim))
+            rasio_rp_str = f"{rasio_rp_sim*100:.2f}%" if rasio_rp_sim is not None else "N/A"
+            res_col4.metric("Rasio After RP", rasio_rp_str,
+                delta="✅ LOLOS" if rasio_rp_sim is not None and rasio_rp_sim < 0.65 else "❌ GAGAL",
+                delta_color="normal" if rasio_rp_sim is not None and rasio_rp_sim < 0.65 else "inverse")
+
+            st.divider()
+            st.subheader("Step 2 — Dampak ke Loan Request (LR)")
+
+            # Collateral LR = after RP + saham beli baru
+            stocks_after_lr_sim = dict(stocks_after_rp_sim)
+            for stock, bdata in d['buy_stocks'].items():
+                stocks_after_lr_sim[stock] = stocks_after_lr_sim.get(stock, 0) + bdata['lot_buy']
+            coll_after_lr_sim, _ = calc_collateral_value(stocks_after_lr_sim, price_map, risk_params)
+
+            avail_efektif_sim = d['avail_limit'] + total_rp_sim
+            ceiling_lr_sim    = min(d['total_buy_val'], avail_efektif_sim)
+            max_lr_63_sim     = max(coll_after_lr_sim * 0.63 - (loan_after_rp_sim + d['accrued']), 0) if coll_after_lr_sim > 0 else 0
+            max_lr_65_sim     = max(coll_after_lr_sim * 0.65 - (loan_after_rp_sim + d['accrued']), 0) if coll_after_lr_sim > 0 else 0
+            max_lr_final_sim  = min(ceiling_lr_sim, max_lr_65_sim)
+            numerator_lr_sim  = loan_after_rp_sim + d['accrued'] + ceiling_lr_sim
+            rasio_lr_sim      = numerator_lr_sim / coll_after_lr_sim if coll_after_lr_sim > 0 else None
+
+            lr_col1, lr_col2, lr_col3 = st.columns(3)
+            lr_col1.metric("Avail Limit Efektif", fmt_rp(avail_efektif_sim),
+                help="Avail Limit + RP yang diinput")
+            lr_col2.metric("Ceiling LR", fmt_rp(ceiling_lr_sim),
+                help="min(Nilai Beli Kemarin, Avail Limit Efektif)")
+            lr_col3.metric("Collateral After LR", fmt_rp(coll_after_lr_sim),
+                help="Collateral After RP + Saham Beli Baru")
+
+            lr_col4, lr_col5, lr_col6 = st.columns(3)
+            lr_col4.metric("Numerator LR", fmt_rp(numerator_lr_sim),
+                help="Loan After RP + Accrued + Ceiling LR")
+            rasio_lr_str = f"{rasio_lr_sim*100:.2f}%" if rasio_lr_sim is not None else "N/A"
+            lr_col5.metric("Rasio LR", rasio_lr_str,
+                delta="✅ LOLOS" if rasio_lr_sim is not None and rasio_lr_sim < 0.65 else "❌ Perlu dipotong",
+                delta_color="normal" if rasio_lr_sim is not None and rasio_lr_sim < 0.65 else "inverse")
+            lr_col6.metric("Max LR Final (aman 63%)", fmt_rp(max_lr_final_sim))
+
+            # Detail collateral
+            with st.expander("📊 Detail Collateral After LR"):
+                coll_rows = []
+                for stock, lot in stocks_after_lr_sim.items():
+                    price_c = price_map.get(stock, 0)
+                    hc_c    = risk_params.get(stock, 0.05)
+                    cv_c    = lot * price_c * (1 - hc_c)
+                    source  = "OP (sisa)" if stock in stocks_after_rp_sim else "Beli Baru"
+                    coll_rows.append({'Saham': stock, 'Lot': int(lot), 'Harga': price_c,
+                                      'HC': f"{hc_c*100:.0f}%", 'Coll Value': cv_c, 'Sumber': source})
+                st.dataframe(pd.DataFrame(coll_rows), use_container_width=True, hide_index=True)
+
+    # ── TAB SUMMARY ───────────────────────────────────────────
+    with tab_summary:
+        st.subheader("📋 Summary Semua Nasabah PEI")
+        summary_rows = []
+        for sid, d in results.items():
+            rasio_rp_str = f"{d['rasio_rp']*100:.2f}%" if d['rasio_rp'] is not None else "-"
+            rasio_lr_str = f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "-"
+            summary_rows.append({
+                'SID':            sid,
+                'Nama':           d['name'],
+                'Loan Existing':  d['loan_existing'],
+                'Coll Awal':      d['coll_before_rp'],
+                'Current Ratio':  f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "-",
+                'RP Min':         d['total_rp_min'],
+                'RP Maks':        d['total_rp_maks'],
+                'Loan After RP':  d['loan_after_rp'],
+                'Coll After RP':  d['coll_after_rp'],
+                'Rasio After RP': rasio_rp_str,
+                'Status RP':      "✅" if d['rasio_rp'] is not None and d['rasio_rp'] < 0.65 else ("-" if d['total_rp_maks']==0 else "❌"),
+                'Ceiling LR':     d['ceiling_lr'],
+                'Coll After LR':  d['coll_after_lr'],
+                'Max LR Final':   d['max_lr_final'],
+                'Rasio LR':       rasio_lr_str,
+                'Status LR':      "✅" if d['rasio_lr'] is not None and d['rasio_lr'] < 0.65 else ("-" if d['total_buy_val']==0 else "❌"),
+            })
+        st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
+
+    # ── TAB EXPORT ────────────────────────────────────────────
+    with tab_export:
+        out = io.BytesIO()
+        with pd.ExcelWriter(out, engine='openpyxl') as wr:
+            # Sheet RP
+            rp_exp = []
+            for sid, d in results.items():
+                for rd in d['rp_detail']:
+                    if not rd['ada_di_op']: continue
+                    rp_exp.append({
+                        'SID': sid, 'Nama': d['name'], 'Saham': rd['stock'],
+                        'Lot Jual': int(rd['lot_sell']), 'Lot OP': int(rd['lot_op']),
+                        'Lot Keluar Kolateral': int(rd['lot_keluar']),
+                        'Harga': rd['price'],
+                        'RP Min': rd['rp_min'], 'RP Maks': rd['rp_maks'],
+                        'Loan Before RP': d['loan_existing'], 'Loan After RP': d['loan_after_rp'],
+                        'Coll After RP': d['coll_after_rp'],
+                        'Rasio After RP': f"{d['rasio_rp']*100:.2f}%" if d['rasio_rp'] is not None else "N/A",
+                    })
+            pd.DataFrame(rp_exp).to_excel(wr, sheet_name='Repayment (RP)', index=False)
+
+            # Sheet LR
+            lr_exp = []
+            for sid, d in results.items():
+                if d['total_buy_val'] <= 0: continue
+                lr_exp.append({
+                    'SID': sid, 'Nama': d['name'],
+                    'RP Maks': d['total_rp_maks'], 'Avail Limit': d['avail_limit'],
+                    'Avail Efektif': d['avail_efektif'], 'Ceiling LR': d['ceiling_lr'],
+                    'Loan After RP': d['loan_after_rp'], 'Coll After LR': d['coll_after_lr'],
+                    'Numerator LR': d['loan_after_rp'] + d['accrued'] + d['ceiling_lr'],
+                    'Rasio LR': f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "N/A",
+                    'Max LR (63%)': d['max_lr_63'], 'Max LR Final': d['max_lr_final'],
+                })
+            pd.DataFrame(lr_exp).to_excel(wr, sheet_name='Loan Request (LR)', index=False)
+
+            # Sheet Summary
+            pd.DataFrame(summary_rows if 'summary_rows' in dir() else []).to_excel(wr, sheet_name='Summary', index=False)
+
+        st.download_button(
+            "📥 Download Hasil_TRX_PEI.xlsx",
+            out.getvalue(), "Hasil_TRX_PEI.xlsx",
+            mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+        )
+
 else:
-    st.warning(
-        "⬆️ Upload 8 file wajib (Netting Invoice, SID Client, Risk Parameter, "
-        "Margin Buy, Margin Sell, Outstanding Position, File Harga Saham, LR sebagai Outstanding belum settled) untuk memulai."
-    )
-
-    with st.expander("📖 Panduan Struktur File"):
+    st.warning("⬆️ Upload semua file wajib untuk memulai.")
+    with st.expander("📖 Panduan & Alur Proses"):
         st.markdown("""
-        | # | File | Sumber File |
-        |---|------|-------------|
-        | 1 | **Netting Invoice** | Hasil generate dari List of Invoice |
-        | 2 | **SID Client** | Template excel berisi kolom SID, CID, Name |
-        | 3 | **Risk Parameter** | File .txt dari menu Report I-Fast Web |
-        | 4 | **Margin Buy** | File .txt dari menu Daily Transaction I-Fast Web |
-        | 5 | **Margin Sell** | File .txt dari menu Daily Transaction I-Fast Web |
-        | 6 | **Outstanding Position** | File .txt dari I-Fast Web (untuk lot & kolateral) |
-        | 7 | **File Harga Saham** | File Excel dengan kolom STK_CODE dan STK_CLOS |
+        ### Alur Proses Pagi Hari
 
-        > **Repayment Value** = Lot (dari OP) × STK_CLOS (dari File Harga)  
-        > **Loan Value** = Volume (dari Invoice) × STK_CLOS (dari File Harga)  
-        > Saham yang tidak dicover margin PEI (dari Risk Parameter) otomatis di-take out.
+        **LANGKAH 1 — Input RP terlebih dahulu:**
+        - RP Min  = Lot di OP × Closing Price  
+        - RP Maks = Nilai transaksi jual kemarin (dari Margin Sell)  
+        - Saham keluar kolateral = min(lot jual, lot di OP)  
+        - Rasio RP = (Loan After RP + Accrued) / Collateral After RP < 65%
+
+        **LANGKAH 2 — Input LR setelah RP selesai:**
+        - Collateral LR = Collateral After RP + Saham Beli Baru (dari Margin Buy)  
+        - Ceiling LR    = min(Nilai Beli Kemarin, Avail Limit + RP)  
+        - Rasio LR      = (Loan After RP + Accrued + LR Diajukan) / Collateral LR < 65%  
+        - Jika > 65% → dipotong agar rasio = 63%
+
+        | # | File | Keterangan |
+        |---|------|------------|
+        | 1 | Netting Invoice | Hasil generate dari List of Invoice |
+        | 2 | SID Client | Kolom SID, CID, Name |
+        | 3 | Risk Parameter | .txt dari I-Fast Web |
+        | 4 | Margin Buy | Transaksi beli kemarin |
+        | 5 | Margin Sell | Transaksi jual kemarin |
+        | 6 | Outstanding Position | Kolateral & loan existing |
+        | 7 | Closing Price | Kolom no_share & kurs_now |
         """)
