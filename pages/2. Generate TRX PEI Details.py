@@ -127,7 +127,12 @@ if all(required_files):
                 risk_sub = df_risk[['stock_key','avail_risk','haircut_key']].drop_duplicates('stock_key').copy()
 
             # Margin Buy — nilai & lot transaksi BELI kemarin per SID
-            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={'SID':'sid_key','STOCK CODE':'stock_key'})
+            df_mbuy = pd.read_csv(file_m_buy, sep='|', dtype=str).rename(columns={
+                'SID': 'sid_key',
+                'STOCK CODE': 'stock_key',
+                'MARGIN BUY QUANTITY': 'qty',       # <--- Sesuaikan dengan nama di file
+                'AVAILABLE MARKET VALUE': 'value'   # <--- Sesuaikan dengan nama di file
+            })
             df_mbuy.columns = df_mbuy.columns.str.strip()
             df_mbuy = clean_num(df_mbuy)
             df_mbuy['stock_key'] = df_mbuy['stock_key'].astype(str).str.strip().str.upper()
