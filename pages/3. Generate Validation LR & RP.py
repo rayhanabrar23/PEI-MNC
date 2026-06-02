@@ -759,18 +759,39 @@ if st.session_state.get('sid_results'):
             elif not d.get('has_rp'):
                 st.info("Tidak ada transaksi jual kemarin.")
             else:
+                # 1. Siapkan data untuk tabel editor
+                data_sim = []
                 for rd in d['rp_detail']:
-                    cs1, cs2, cs3, cs4 = st.columns([2,1,1,2])
-                    cs1.markdown(f"**{rd['stock']}**  \nLot Jual: {int(rd['lot_sell']):,} | Lot OP: {int(rd['lot_op']):,}")
-                    cs2.write(f"Min: {fmt_rp(rd['rp_min'])}")
-                    cs3.write(f"Maks: {fmt_rp(rd['rp_maks'])}")
-                    val = cs4.number_input(f"RP {rd['stock']}",
-                        min_value=float(rd['rp_min']), max_value=float(rd['rp_maks']),
-                        value=float(rd['rp_maks']), step=1_000_000.0, format="%.0f",
-                        key=f"sim_rp_{sel_sid}_{rd['stock']}", label_visibility="collapsed")
-                    rp_inputs[rd['stock']] = {'rp_value': val, 'lot_keluar': rd['lot_keluar']}
+                    data_sim.append({
+                        "Saham": rd['stock'],
+                        "Lot Jual": int(rd['lot_sell']),
+                        "Harga": rd['price'],
+                        "Max Lot": int(rd['lot_sell']) # User bisa tahu batas maksimal jual
+                    })
+                df_sim = pd.DataFrame(data_sim)
 
-            total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
+                # 2. Tampilkan Tabel Editor
+                st.write("Silakan ubah 'Lot Jual' untuk menyimulasikan nominal RP:")
+                edited_df = st.data_editor(
+                    df_sim,
+                    column_config={
+                        "Lot Jual": st.column_config.NumberColumn("Lot Jual", min_value=0, max_value=None, step=1),
+                        "Harga": st.column_config.NumberColumn("Harga", format="Rp %d"),
+                    },
+                    hide_index=True,
+                    use_container_width=True
+                )
+
+                # 3. Masukkan hasil edit ke dalam rp_inputs
+                rp_inputs = {}
+                for idx, row in edited_df.iterrows():
+                    val = row['Lot Jual'] * row['Harga']
+                    # Cari lot_keluar dari data asli (rd) untuk perhitungan collateral
+                    original_data = next(item for item in d['rp_detail'] if item["stock"] == row["Saham"])
+                    rp_inputs[row['Saham']] = {
+                        'rp_value': val, 
+                        'lot_keluar': min(row['Lot Jual'], original_data['lot_op']) 
+                    }
 
             # Hitung ulang setelah RP simulator
             stocks_after_rp_sim = dict(d['stocks_op'])
