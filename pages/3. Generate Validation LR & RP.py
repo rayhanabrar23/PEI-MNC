@@ -265,16 +265,18 @@ def validate_sid(sid, op_data, cl_data, sell_regular, margin_buy,
             add("RP-2. Lot Sell ≤ Lot di OP", True, "Tidak ada transaksi jual")
             add("RP-3. Rasio After RP < 65%", True, "Tidak ada transaksi jual")
     else:
-        # RP-1: Saham sell ada di OP
-        rp1_pass   = True
+        # RP-1: Pengecekan Saham Jual vs OP (Hanya sebagai Info, TIDAK menggagalkan SID)
+        rp1_pass = True  # Selalu True agar nasabah tetap lanjut
         rp1_detail = []
-        for stock, sdata in sell_stocks.items():
-            lot_op = stocks_op.get(stock, 0)
-            if lot_op <= 0:
-                rp1_pass = False
-                rp1_detail.append(f"{stock}: tidak ada di OP")
-        add("RP-1. Saham Sell Ada di OP", rp1_pass,
-            "; ".join(rp1_detail) if rp1_detail else "Semua saham terverifikasi di OP ✓")
+        for stock in sell_stocks.keys():
+            if stocks_op.get(stock, 0) == 0:
+                rp1_detail.append(f"{stock}")
+                
+        if rp1_detail:
+            # Tetap tampilkan info saham apa saja yang bukan jaminan, tapi status tetap True/Lolos
+            add("RP-1. Pengecekan Saham Jual", True, f"ℹ️ Info: Saham reguler (bukan OP): {', '.join(rp1_detail)}")
+        else:
+            add("RP-1. Pengecekan Saham Jual", True, "✅ Semua saham jual adalah kolateral (ada di OP)")
 
        # RP-2: Lot sell ≤ lot OP — auto-adjust kalau lebih
         rp2_detail = []
