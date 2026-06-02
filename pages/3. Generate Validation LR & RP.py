@@ -276,7 +276,7 @@ def validate_sid(sid, op_data, cl_data, sell_regular, margin_buy,
         add("RP-1. Saham Sell Ada di OP", rp1_pass,
             "; ".join(rp1_detail) if rp1_detail else "Semua saham terverifikasi di OP ✓")
 
-        # RP-2: Lot sell ≤ lot OP — auto-adjust kalau lebih
+       # RP-2: Lot sell ≤ lot OP — auto-adjust kalau lebih
         rp2_detail = []
         for stock, sdata in sell_stocks.items():
             lot_sell = sdata['lot']
@@ -286,10 +286,14 @@ def validate_sid(sid, op_data, cl_data, sell_regular, margin_buy,
             rp_min   = lot_keluar * price
             rp_maks  = sdata['value']
             ada      = lot_op > 0
+            
+            # --- PERUBAHAN UTAMA: Uang tunai masuk tanpa syarat ---
+            total_rp_maks += rp_maks 
+            
             if lot_sell > lot_op and ada:
                 rp2_detail.append(f"{stock}: {lot_sell:,.0f} → adjusted ke {lot_op:,.0f} (sesuai OP)")
+            
             if ada:
-                total_rp_maks += rp_maks
                 total_rp_min  += rp_min
                 rp_detail.append({
                     'stock': stock, 'lot_sell': lot_sell, 'lot_op': lot_op,
@@ -300,6 +304,7 @@ def validate_sid(sid, op_data, cl_data, sell_regular, margin_buy,
                 stocks_after_rp[stock] = stocks_after_rp.get(stock, 0) - lot_keluar
                 if stocks_after_rp[stock] <= 0:
                     del stocks_after_rp[stock]
+                    
         add("RP-2. Lot Sell ≤ Lot di OP", True,
             ("⚠️ Auto-adjusted: " + "; ".join(rp2_detail)) if rp2_detail else
             f"Total RP Maks: {fmt_rp(total_rp_maks)}")
