@@ -122,8 +122,8 @@ def parse_sell_regular(content: str) -> dict:
         parts = line.split('|')
         if len(parts) < 5 or parts[0].strip() == 'SID': continue
         sid   = parts[0].strip()
-        stock = parts[2].strip().upper() if len(parts) > 2 else ''
-        try: qty = float(str(parts[3]).replace(',',''))
+        stock = parts[1].strip().upper() if len(parts) > 1 else ''
+        try: qty = float(str(parts[2]).replace(',',''))
         except: qty = 0.0
         try: val = float(str(parts[6]).replace(',','')) if len(parts) > 6 else 0.0
         except: val = 0.0
