@@ -776,6 +776,8 @@ if st.session_state.get('sid_results'):
             st.subheader("Step 1 — Atur Nilai RP")
             total_rp_sim = 0
             rp_inputs = {}
+            # ... (setelah blok edited_df) ...
+            total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
             elif not d.get('has_rp'):
@@ -947,8 +949,8 @@ if st.session_state.get('sid_results'):
                 for s in sid_results:
                     new_results[s] = validate_sid(
                         s, op_data, cl_data, sell_regular, margin_buy,
-                        closing_prices, risk_params, df_buy_upd,
-                        st.session_state['df_sell_edited'])
+                        closing_prices, risk_params,
+                        st.session_state['df_sell_edited'], df_buy_upd)
                 total_lr_new = sum(d['max_lr_final'] for d in new_results.values() if lolos_lr(d))
                 total_rp_new = sum(d['total_rp_maks'] for d in new_results.values() if lolos_rp(d))
                 st.session_state['sid_results']    = new_results
