@@ -907,8 +907,13 @@ if st.session_state.get('sid_results'):
                     for c in data['checks']:
                         if c['label'].startswith('LR-') and not c['passed']:
                             st.error(f"**{c['label']}** — {c['detail']}")
-
-    # ── TAB AUTO-ADJUST ───────────────────────────────────────
+                                    
+     if st.session_state.get('debug_log'):
+        with st.expander("🐛 Debug Log", expanded=True):
+            for line in st.session_state['debug_log']:
+                st.write(line)
+                        
+    # ── TAB AUTO-ADJUST ───────────────────────────────────────                 
     with tab_adj:
         st.subheader("⚡ Auto-Adjust LR — Target Rasio 63%")
         gagal_lr3 = [(s,d) for s,d in sid_results.items()
@@ -931,10 +936,16 @@ if st.session_state.get('sid_results'):
                 })
             st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
 
-            if st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
-                st.write("🔄 Tombol diklik, memproses...")
+            iif st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
                 df_buy_upd = st.session_state['df_buy_adjusted'].copy()
-                st.write(f"df_buy_upd shape: {df_buy_upd.shape}, kolom: {list(df_buy_upd.columns)}")
+                st.session_state['debug_log'] = []
+                st.session_state['debug_log'].append(f"df_buy shape: {df_buy_upd.shape}")
+                st.session_state['debug_log'].append(f"Kolom: {list(df_buy_upd.columns)}")
+                st.session_state['debug_log'].append(f"Kolom [13]: {df_buy_upd.columns[13] if len(df_buy_upd.columns) > 13 else 'TIDAK ADA'}")
+                st.session_state['debug_log'].append(f"Kolom [14]: {df_buy_upd.columns[14] if len(df_buy_upd.columns) > 14 else 'TIDAK ADA'}")
+                for sid, data in gagal_lr3:
+                    st.session_state['debug_log'].append(f"Adjust SID {sid}: max_lr_final={data['max_lr_final']}, total_buy_val={data['total_buy_val']}")
+                    df_buy_upd = auto_adjust_loan(df_buy_upd, sid, data['max_lr_final'], data['total_buy_val'], closing_prices)
                 for sid, data in gagal_lr3:
                     df_buy_upd = auto_adjust_loan(
                         df_buy_upd, sid, data['max_lr_final'],
