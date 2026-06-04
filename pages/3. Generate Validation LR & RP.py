@@ -720,6 +720,10 @@ if st.session_state.get('sid_results'):
             skip = data.get('rp_skipped')
             ok   = lolos_rp(data)
             icon = "⏭" if skip else ("✅" if ok else "❌")
+            # Tambah cek is_simulated
+            simulated = data.get('is_simulated', False)
+            icon = "⏭" if skip else ("✅" if ok else "❌")
+            if simulated: icon += " ✏️"
             with st.expander(f"{icon} {sid} — {data['name']}  |  RP Maks: {fmt_rp(data['total_rp_maks'])}", expanded=not ok and not skip):
                 if skip:
                     st.info("Loan Existing = 0 → Repayment tidak diperlukan")
@@ -752,11 +756,6 @@ if st.session_state.get('sid_results'):
                     if c['passed']: st.success(f"✅ **{c['label']}** {c['detail']}")
                     else:           st.error(  f"❌ **{c['label']}** {c['detail']}")
 
-            # Tambah cek is_simulated
-            simulated = data.get('is_simulated', False)
-            icon = "⏭" if skip else ("✅" if ok else "❌")
-            if simulated: icon += " ✏️"
-
     # ── TAB LR ────────────────────────────────────────────────
     with tab_lr:
         st.info("💡 Input LR **setelah RP selesai**. Collateral sudah ditambah saham beli baru. Ceiling LR = min(Nilai Beli, Avail Limit + RP).")
@@ -764,6 +763,9 @@ if st.session_state.get('sid_results'):
             if not data.get('has_lr'): continue
             ok   = lolos_lr(data)
             icon = "✅" if ok else "❌"
+            simulated = data.get('is_simulated', False)
+            icon = "✅" if ok else "❌"
+            if simulated: icon += " ✏️"
             with st.expander(f"{icon} {sid} — {data['name']}  |  Max LR Final: {fmt_rp(data['max_lr_final'])}", expanded=not ok):
 
                 st.info(
@@ -790,10 +792,6 @@ if st.session_state.get('sid_results'):
                     if not c['label'].startswith('LR-'): continue
                     if c['passed']: st.success(f"✅ **{c['label']}** {c['detail']}")
                     else:           st.error(  f"❌ **{c['label']}** {c['detail']}")
-
-            simulated = data.get('is_simulated', False)
-            icon = "✅" if ok else "❌"
-            if simulated: icon += " ✏️"
 
     # ── TAB SIMULATOR ─────────────────────────────────────────
     with tab_sim:
