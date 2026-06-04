@@ -804,30 +804,40 @@ if st.session_state.get('sid_results'):
         else:
             sel_sid = st.selectbox("Pilih Nasabah:", sid_options,
                 format_func=lambda s: f"{s} — {sid_results[s]['name']}")
+            
             d = st.session_state['sid_results'][sel_sid]
-
+            
+            # Badge kalau sudah disimpan
+            if d.get('is_simulated'):
+                st.success("✏️ Nasabah ini menggunakan nilai simulasi yang sudah disimpan.")
+            
             c1, c2, c3 = st.columns(3)
             c1.metric("Loan Outstanding", fmt_rp(d['loan_existing']))
             c2.metric("Collateral Awal",  fmt_rp(d['coll_before_rp']))
             c3.metric("Current Ratio",    f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
-
+            
             st.subheader("Step 1 — Atur Nilai RP")
-
+            
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                mode1 = st.checkbox("📦 Simulasi Lot Saham", value=True)
+                mode1 = st.checkbox("📦 Simulasi Lot Saham", value=True, key=f"mode1_{sel_sid}")
             with col_m2:
-                mode2 = st.checkbox("💰 Simulasi Nilai RP")
-
+                mode2 = st.checkbox("💰 Simulasi Nilai RP", key=f"mode2_{sel_sid}")
+            
             rp_inputs = {}
-
+            
+            # Ambil data original untuk referensi
+            original_d = st.session_state.get('sid_results_original', {}).get(sel_sid, d)
+            
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
             elif not d.get('has_rp'):
                 st.info("Tidak ada transaksi jual kemarin.")
             else:
+                # Pakai rp_detail dari original agar tabel input tidak berubah
+                rp_detail_ref = original_d.get('rp_detail', d['rp_detail'])
                 data_sim = []
-                for rd in d['rp_detail']:
+                for rd in rp_detail_ref:
                     data_sim.append({
                         "Saham":    rd['stock'],
                         "Lot Jual": int(rd['lot_sell']),
@@ -836,8 +846,7 @@ if st.session_state.get('sid_results'):
                         "_lot_op":  int(rd['lot_op']),
                     })
                 df_sim = pd.DataFrame(data_sim)
-
-                # Tabel 1 — Simulasi Lot Saham
+            
                 if mode1:
                     st.caption("📦 Simulasi Lot Saham")
                     df_sim1 = df_sim[["Saham", "Lot Jual", "Harga", "_lot_op"]].copy()
@@ -855,8 +864,7 @@ if st.session_state.get('sid_results'):
                     )
                 else:
                     edited_df1 = df_sim[["Saham", "Lot Jual", "Harga", "_lot_op"]].copy()
-
-                # Tabel 2 — Simulasi Nilai RP
+            
                 if mode2:
                     st.caption("💰 Simulasi Nilai RP")
                     df_sim2 = df_sim[["RP Value"]].copy()
@@ -871,37 +879,34 @@ if st.session_state.get('sid_results'):
                     )
                 else:
                     edited_df2 = df_sim[["RP Value"]].copy()
-
-                # Hitung rp_inputs
+            
                 for i, row in edited_df1.iterrows():
                     stock      = row['Saham']
-                    lot_jual   = row['Lot Jual'] if mode1 else next(rd['lot_sell'] for rd in d['rp_detail'] if rd['stock'] == stock)
+                    lot_jual   = row['Lot Jual'] if mode1 else next(rd['lot_sell'] for rd in rp_detail_ref if rd['stock'] == stock)
                     lot_op     = row['_lot_op']
                     lot_keluar = min(lot_jual, lot_op) if mode1 else 0
                     harga      = row['Harga']
-
                     if mode2:
                         rp_value = float(edited_df2.loc[i, 'RP Value'])
                     else:
                         rp_value = lot_jual * harga * 1.01
-
                     rp_inputs[stock] = {
                         'rp_value':   rp_value,
                         'lot_keluar': lot_keluar,
                     }
-
+            
             total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
-
-            # Hitung ulang setelah RP simulator
-            stocks_after_rp_sim = dict(d['stocks_op'])
+            
+            # Hitung ulang collateral
+            stocks_after_rp_sim = dict(original_d.get('stocks_op', d['stocks_op']))
             for stock, v in rp_inputs.items():
                 if v['lot_keluar'] > 0:
                     stocks_after_rp_sim[stock] = stocks_after_rp_sim.get(stock, 0) - v['lot_keluar']
                     if stocks_after_rp_sim.get(stock, 0) <= 0:
                         stocks_after_rp_sim.pop(stock, None)
-
+            
             coll_after_rp_sim, _ = calc_collateral(stocks_after_rp_sim, closing_prices, risk_params)
-            loan_after_rp_sim    = max(d['loan_existing'] - total_rp_sim, 0)
+            loan_after_rp_sim    = max(original_d.get('loan_existing', d['loan_existing']) - total_rp_sim, 0)
             rasio_rp_sim = (loan_after_rp_sim + d['accrued']) / coll_after_rp_sim if coll_after_rp_sim > 0 else None
 
             st.divider()
