@@ -804,7 +804,7 @@ if st.session_state.get('sid_results'):
         else:
             sel_sid = st.selectbox("Pilih Nasabah:", sid_options,
                 format_func=lambda s: f"{s} — {sid_results[s]['name']}")
-            d = sid_results[sel_sid]
+            d = st.session_state['sid_results'][sel_sid]
 
             c1, c2, c3 = st.columns(3)
             c1.metric("Loan Outstanding", fmt_rp(d['loan_existing']))
@@ -962,7 +962,7 @@ if st.session_state.get('sid_results'):
             
             with btn1:
                 if st.button("💾 Simpan Simulasi", use_container_width=True, type="primary"):
-                    updated = copy.deepcopy(sid_results[sel_sid])
+                    updated = copy.deepcopy(st.session_state['sid_results'][sel_sid])
                     updated['is_simulated']  = True
                     updated['loan_after_rp'] = loan_after_rp_sim
                     updated['coll_after_rp'] = coll_after_rp_sim
