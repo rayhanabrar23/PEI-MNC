@@ -908,10 +908,10 @@ if st.session_state.get('sid_results'):
                         if c['label'].startswith('LR-') and not c['passed']:
                             st.error(f"**{c['label']}** — {c['detail']}")
                                     
-     if st.session_state.get('debug_log'):
-        with st.expander("🐛 Debug Log", expanded=True):
-            for line in st.session_state['debug_log']:
-                st.write(line)
+            if st.session_state.get('debug_log'):
+               with st.expander("🐛 Debug Log", expanded=True):
+                    for line in st.session_state['debug_log']:
+                        st.write(line)
                         
     # ── TAB AUTO-ADJUST ───────────────────────────────────────                 
     with tab_adj:
@@ -936,7 +936,7 @@ if st.session_state.get('sid_results'):
                 })
             st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
 
-            iif st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
+            if st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
                 df_buy_upd = st.session_state['df_buy_adjusted'].copy()
                 st.session_state['debug_log'] = []
                 st.session_state['debug_log'].append(f"df_buy shape: {df_buy_upd.shape}")
