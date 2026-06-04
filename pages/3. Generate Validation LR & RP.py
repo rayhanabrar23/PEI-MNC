@@ -823,64 +823,65 @@ if st.session_state.get('sid_results'):
                         "Saham":    rd['stock'],
                         "Lot Jual": int(rd['lot_sell']),
                         "Harga":    rd['price'],
-                        "RP Value": round(rd['rp_maks'], 0),  # default = nilai jual × 1.01
+                        "RP Value": round(rd['rp_maks'], 0),
                         "_lot_op":  int(rd['lot_op']),
                     })
                 df_sim = pd.DataFrame(data_sim)
 
                 # Tabel 1 — Simulasi Lot Saham
-            if mode1:
-                st.caption("📦 Simulasi Lot Saham")
-                df_sim1 = df_sim[["Saham", "Lot Jual", "Harga", "_lot_op"]].copy()
-                edited_df1 = st.data_editor(
-                    df_sim1,
-                    column_config={
-                        "Saham":   st.column_config.TextColumn("Saham",   disabled=True),
-                        "Lot Jual":st.column_config.NumberColumn("Lot Jual", min_value=0, step=1),
-                        "Harga":   st.column_config.NumberColumn("Harga", format="Rp %d", disabled=True),
-                        "_lot_op": st.column_config.NumberColumn("Lot OP", disabled=True),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                    key=f"sim1_{sel_sid}"
-                )
-            else:
-                edited_df1 = df_sim[["Saham", "Lot Jual", "Harga", "_lot_op"]].copy()
-
-            # Tabel 2 — Simulasi Nilai RP
-            if mode2:
-                st.caption("💰 Simulasi Nilai RP")
-                df_sim2 = df_sim[["RP Value"]].copy()
-                edited_df2 = st.data_editor(
-                    df_sim2,
-                    column_config={
-                        "RP Value": st.column_config.NumberColumn("RP Value (Rp)", min_value=0, step=1_000_000.0),
-                    },
-                    hide_index=True,
-                    use_container_width=True,
-                    key=f"sim2_{sel_sid}"
-                )
-            else:
-                edited_df2 = df_sim[["RP Value"]].copy()
-
-            # Hitung rp_inputs dari kedua tabel
-            for _, row in edited_df1.iterrows():
-                stock      = row['Saham']
-                lot_jual   = row['Lot Jual'] if mode1 else next(rd['lot_sell'] for rd in d['rp_detail'] if rd['stock'] == stock)
-                lot_op     = row['_lot_op']
-                lot_keluar = min(lot_jual, lot_op) if mode1 else 0
-                harga      = row['Harga']
-
-                rp_row  = edited_df2[edited_df2['Saham'] == stock]
-                if mode2 and not rp_row.empty:
-                    rp_value = float(rp_row['RP Value'].values[0])
+                if mode1:
+                    st.caption("📦 Simulasi Lot Saham")
+                    df_sim1 = df_sim[["Saham", "Lot Jual", "Harga", "_lot_op"]].copy()
+                    edited_df1 = st.data_editor(
+                        df_sim1,
+                        column_config={
+                            "Saham":   st.column_config.TextColumn("Saham", disabled=True),
+                            "Lot Jual":st.column_config.NumberColumn("Lot Jual", min_value=0, step=1),
+                            "Harga":   st.column_config.NumberColumn("Harga", format="Rp %d", disabled=True),
+                            "_lot_op": st.column_config.NumberColumn("Lot OP", disabled=True),
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        key=f"sim1_{sel_sid}"
+                    )
                 else:
-                    rp_value = lot_jual * harga * 1.01
-            
-                rp_inputs[stock] = {
-                    'rp_value':   rp_value,
-                    'lot_keluar': lot_keluar,
-                }
+                    edited_df1 = df_sim[["Saham", "Lot Jual", "Harga", "_lot_op"]].copy()
+
+                # Tabel 2 — Simulasi Nilai RP
+                if mode2:
+                    st.caption("💰 Simulasi Nilai RP")
+                    df_sim2 = df_sim[["RP Value"]].copy()
+                    edited_df2 = st.data_editor(
+                        df_sim2,
+                        column_config={
+                            "RP Value": st.column_config.NumberColumn("RP Value (Rp)", min_value=0, step=1_000_000.0),
+                        },
+                        hide_index=True,
+                        use_container_width=True,
+                        key=f"sim2_{sel_sid}"
+                    )
+                else:
+                    edited_df2 = df_sim[["RP Value"]].copy()
+
+                # Hitung rp_inputs
+                for i, row in edited_df1.iterrows():
+                    stock      = row['Saham']
+                    lot_jual   = row['Lot Jual'] if mode1 else next(rd['lot_sell'] for rd in d['rp_detail'] if rd['stock'] == stock)
+                    lot_op     = row['_lot_op']
+                    lot_keluar = min(lot_jual, lot_op) if mode1 else 0
+                    harga      = row['Harga']
+
+                    if mode2:
+                        rp_value = float(edited_df2.loc[i, 'RP Value'])
+                    else:
+                        rp_value = lot_jual * harga * 1.01
+
+                    rp_inputs[stock] = {
+                        'rp_value':   rp_value,
+                        'lot_keluar': lot_keluar,
+                    }
+
+            total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
 
             # Hitung ulang setelah RP simulator
             stocks_after_rp_sim = dict(d['stocks_op'])
