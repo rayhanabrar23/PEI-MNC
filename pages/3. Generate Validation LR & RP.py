@@ -352,8 +352,10 @@ def validate_sid(sid, op_data, cl_data, sell_regular, margin_buy,
 
     total_buy_val  = sum(b['value'] for b in buy_stocks.values())
     avail_efektif  = avail_lim + total_rp_maks
-    ceiling_lr     = min(total_buy_val, avail_efektif) if has_lr else 0
-
+    buy_with_buffer = total_buy_val * 1.1
+    ceiling_lr = min(buy_with_buffer, avail_efektif)
+    # flag apakah buffer berlaku atau tidak
+    buffer_lr_berlaku = buy_with_buffer <= avail_efektif
     max_lr_63 = max(coll_after_lr * AUTO_ADJUST_TARGET - (loan_after_rp2 + accrued), 0) if coll_after_lr > 0 else 0
     max_lr_65 = max(coll_after_lr * RATIO_THRESHOLD    - (loan_after_rp2 + accrued), 0) if coll_after_lr > 0 else 0
     max_lr_final = min(ceiling_lr, max_lr_65)
