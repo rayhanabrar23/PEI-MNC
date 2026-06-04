@@ -298,7 +298,7 @@ def validate_sid(sid, op_data, cl_data, sell_regular, margin_buy,
             lot_keluar = min(lot_sell, lot_op)
             price    = closing_prices.get(stock, 0)
             rp_min   = lot_keluar * price
-            rp_maks  = sdata['value']
+            rp_maks = sdata['value'] * 1.01
             ada      = lot_op > 0
             
             # --- PERUBAHAN UTAMA: Uang tunai masuk tanpa syarat ---
