@@ -193,8 +193,20 @@ def load_hasil_mnc(uploaded_file):
     else:
         st.error(f"❌ Sheet untuk Loan Request tidak ditemukan! Sheet yang tersedia di Excel Anda: {xls.sheet_names}")
         st.stop()
-        
-    return df_sell, df_buy
+                
+    st.write("Sheet names:", xls.sheet_names)
+    st.write("df_buy columns:", list(df_buy.columns))
+    st.write("df_buy shape:", df_buy.shape)
+            
+    # Load raw buy sheet (data transaksi per baris, bukan summary)
+    if "Buy (Loan)" in xls.sheet_names:
+        df_buy_raw = pd.read_excel(xls, sheet_name="Buy (Loan)", header=0)
+    elif "Loan Request (LR)" in xls.sheet_names:
+        df_buy_raw = pd.read_excel(xls, sheet_name="Loan Request (LR)", header=0)
+    else:
+        df_buy_raw = df_buy.copy()
+
+    return df_sell, df_buy, df_buy_raw
 
 # ─────────────────────────────────────────────
 # COLLATERAL CALCULATOR
@@ -601,7 +613,7 @@ if run_btn:
         st.stop()
 
     with st.spinner("⚙️ Memproses data..."):
-        df_sell, df_buy = load_hasil_mnc(hasil_file)
+        df_sell, df_buy, df_buy_raw = load_hasil_mnc(hasil_file)
         op_content = op_file.read().decode("utf-8", errors="replace")
         op_data    = parse_op_file(op_content)
         cl_content = cl_file.read().decode("utf-8", errors="replace")
@@ -648,10 +660,8 @@ if run_btn:
         'sell_regular':   sell_regular,
         'df_sell_edited': df_sell.copy(),
         'df_buy':         df_buy.copy(),
-        'df_buy_adjusted':df_buy.copy(),
-    st.write("Sheet names:", xls.sheet_names)
-    st.write("df_buy columns:", list(df_buy.columns))
-    st.write("df_buy shape:", df_buy.shape)
+        'df_buy_raw':     df_buy_raw.copy(),
+        'df_buy_adjusted':df_buy_raw.copy(),
     })
     st.success("✅ Validasi Selesai!")
 
@@ -940,7 +950,7 @@ if st.session_state.get('sid_results'):
             st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
 
             if st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
-                df_buy_upd = st.session_state['df_buy_adjusted'].copy()
+                df_buy_upd = st.session_state.get('df_buy_raw', st.session_state['df_buy_adjusted']).copy()
                 st.session_state['debug_log'] = []
                 st.session_state['debug_log'].append(f"df_buy shape: {df_buy_upd.shape}")
                 st.session_state['debug_log'].append(f"Kolom: {list(df_buy_upd.columns)}")
