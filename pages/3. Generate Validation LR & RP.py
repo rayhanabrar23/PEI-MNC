@@ -958,72 +958,62 @@ if st.session_state.get('sid_results'):
 
 
             st.divider()
-            btn1, btn2, btn3 = st.columns(3)
+            col_b1, col_b2, col_b3 = st.columns(3)
             
-            with btn1:
-                if st.button("💾 Simpan Simulasi", use_container_width=True, type="primary"):
-                    updated = copy.deepcopy(st.session_state['sid_results'][sel_sid])
-                    updated['is_simulated']  = True
-                    updated['loan_after_rp'] = loan_after_rp_sim
-                    updated['coll_after_rp'] = coll_after_rp_sim
-                    updated['coll_after_lr'] = coll_lr_sim
-                    updated['ceiling_lr']    = ceiling_sim
-                    updated['avail_efektif'] = avail_eff_sim
-                    updated['max_lr_63']     = max63_sim
-                    updated['max_lr_65']     = max65_sim
-                    updated['max_lr_final']  = max_final_sim
-                    updated['total_rp_maks'] = total_rp_sim
-                    updated['loan_after_rp'] = loan_after_rp_sim
-                    updated['stocks_after_rp'] = stocks_after_rp_sim
-                    updated['stocks_after_lr'] = stocks_after_lr_sim
-                    # Update checks RP-3 dan LR-3
-                    new_checks = []
-                    for c in updated['checks']:
-                        if c['label'] == 'RP-3. Rasio After RP < 65%':
-                            new_checks.append({
-                                'label': c['label'],
-                                'passed': rasio_rp_sim is not None and rasio_rp_sim < RATIO_THRESHOLD,
-                                'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_rp_sim)} | Loan After RP: {fmt_rp(loan_after_rp_sim)} | Coll: {fmt_rp(coll_after_rp_sim)}"
-                            })
-                        elif c['label'] == 'LR-3. Rasio LR < 65%':
-                            new_checks.append({
-                                'label': c['label'],
-                                'passed': rasio_lr_sim is not None and rasio_lr_sim < RATIO_THRESHOLD,
-                                'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_lr_sim)} | Ceiling LR: {fmt_rp(ceiling_sim)} | Coll: {fmt_rp(coll_lr_sim)}"
-                            })
-                        else:
-                            new_checks.append(c)
-                    updated['checks'] = new_checks
-                    st.session_state['sid_results'][sel_sid] = updated
-                    st.write("✅ Tersimpan. is_simulated:", st.session_state['sid_results'][sel_sid].get('is_simulated'))
-                    st.write("total_rp_maks:", st.session_state['sid_results'][sel_sid].get('total_rp_maks'))
-                    st.write("loan_after_rp:", st.session_state['sid_results'][sel_sid].get('loan_after_rp'))
-                    st.success(f"✅ Simulasi {sel_sid} disimpan!")
+            if col_b1.button("💾 Simpan Simulasi", use_container_width=True, type="primary"):
+                updated = copy.deepcopy(st.session_state['sid_results'][sel_sid])
+                updated['is_simulated']    = True
+                updated['loan_after_rp']   = loan_after_rp_sim
+                updated['coll_after_rp']   = coll_after_rp_sim
+                updated['coll_after_lr']   = coll_lr_sim
+                updated['ceiling_lr']      = ceiling_sim
+                updated['avail_efektif']   = avail_eff_sim
+                updated['max_lr_63']       = max63_sim
+                updated['max_lr_65']       = max65_sim
+                updated['max_lr_final']    = max_final_sim
+                updated['total_rp_maks']   = total_rp_sim
+                updated['stocks_after_rp'] = stocks_after_rp_sim
+                updated['stocks_after_lr'] = stocks_after_lr_sim
+                new_checks = []
+                for c in updated['checks']:
+                    if c['label'] == 'RP-3. Rasio After RP < 65%':
+                        new_checks.append({
+                            'label': c['label'],
+                            'passed': rasio_rp_sim is not None and rasio_rp_sim < RATIO_THRESHOLD,
+                            'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_rp_sim)} | Loan After RP: {fmt_rp(loan_after_rp_sim)} | Coll: {fmt_rp(coll_after_rp_sim)}"
+                        })
+                    elif c['label'] == 'LR-3. Rasio LR < 65%':
+                        new_checks.append({
+                            'label': c['label'],
+                            'passed': rasio_lr_sim is not None and rasio_lr_sim < RATIO_THRESHOLD,
+                            'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_lr_sim)} | Ceiling LR: {fmt_rp(ceiling_sim)} | Coll: {fmt_rp(coll_lr_sim)}"
+                        })
+                    else:
+                        new_checks.append(c)
+                updated['checks'] = new_checks
+                st.session_state['sid_results'][sel_sid] = updated
+                st.write("DEBUG:", st.session_state['sid_results'][sel_sid].get('is_simulated'))
+                st.rerun()
+            
+            if col_b2.button("↩️ Reset Nasabah Ini", use_container_width=True):
+                original = st.session_state.get('sid_results_original', {})
+                if sel_sid in original:
+                    st.session_state['sid_results'][sel_sid] = copy.deepcopy(original[sel_sid])
                     st.rerun()
             
-            with btn2:
-                if st.button("↩️ Reset Nasabah Ini", use_container_width=True):
-                    original = st.session_state.get('sid_results_original', {})
-                    if sel_sid in original:
-                        st.session_state['sid_results'][sel_sid] = copy.deepcopy(original[sel_sid])
-                        st.success(f"↩️ {sel_sid} direset ke nilai awal!")
-                        st.rerun()
+            if col_b3.button("🔄 Reset Semua", use_container_width=True):
+                original = st.session_state.get('sid_results_original', {})
+                if original:
+                    st.session_state['sid_results'] = copy.deepcopy(original)
+                    st.rerun()
             
-            with btn3:
-                if st.button("🔄 Reset Semua", use_container_width=True):
-                    original = st.session_state.get('sid_results_original', {})
-                    if original:
-                        st.session_state['sid_results'] = copy.deepcopy(original)
-                        st.success("🔄 Semua nasabah direset ke nilai awal!")
-                        st.rerun()
-
-    # ── TAB GLOBAL ────────────────────────────────────────────
-    with tab_global:
-        st.subheader("Validasi Limit Participant — Credit Limit Partisipan")
-        if global_result["passed"]:
-            st.success(f"✅ LOLOS — {global_result['detail']}")
-        else:
-            st.error(f"❌ GAGAL — {global_result['detail']}")
+                # ── TAB GLOBAL ────────────────────────────────────────────
+                with tab_global:
+                    st.subheader("Validasi Limit Participant — Credit Limit Partisipan")
+                    if global_result["passed"]:
+                        st.success(f"✅ LOLOS — {global_result['detail']}")
+                    else:
+                        st.error(f"❌ GAGAL — {global_result['detail']}")
 
     # ── TAB GAGAL ─────────────────────────────────────────────
     with tab_gagal:
