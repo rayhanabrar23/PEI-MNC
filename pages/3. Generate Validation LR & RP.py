@@ -6,10 +6,15 @@ import copy
 
 # ── SESSION STATE INIT ────────────────────────────────────────
 for key in ['df_sell_edited','sid_results','global_result','df_buy',
-            'df_buy_adjusted','op_data','cl_data','closing_prices',
-            'risk_params','clamped_warnings','sid_results_original']:
+            'df_buy_adjusted','op_data','cl_data','closing_prices','risk_params']:
     if key not in st.session_state:
-        st.session_state[key] = None if key != 'clamped_warnings' else []
+        st.session_state[key] = None
+
+if 'clamped_warnings' not in st.session_state:
+    st.session_state['clamped_warnings'] = []
+
+if 'sid_results_original' not in st.session_state:
+    st.session_state['sid_results_original'] = {}  # ← dict kosong, bukan None
 
 st.set_page_config(page_title="Validasi MNC", page_icon="✅", layout="wide")
 st.title("✅ Validasi MNC")
@@ -827,7 +832,7 @@ if st.session_state.get('sid_results'):
             rp_inputs = {}
             
             # Ambil data original untuk referensi
-            original_d = st.session_state.get('sid_results_original', {}).get(sel_sid, d)
+            original_d = (st.session_state.get('sid_results_original') or {}).get(sel_sid, d)
             
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
