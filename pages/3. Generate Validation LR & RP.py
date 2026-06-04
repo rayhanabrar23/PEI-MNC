@@ -803,8 +803,15 @@ if st.session_state.get('sid_results'):
             c3.metric("Current Ratio",    f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
 
             st.subheader("Step 1 — Atur Nilai RP")
-            total_rp_sim = 0
+
+            col_m1, col_m2 = st.columns(2)
+            with col_m1:
+                mode1 = st.checkbox("📦 Simulasi Lot Saham", value=True)
+            with col_m2:
+                mode2 = st.checkbox("💰 Simulasi Nilai RP")
+
             rp_inputs = {}
+
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
             elif not d.get('has_rp'):
@@ -813,28 +820,46 @@ if st.session_state.get('sid_results'):
                 data_sim = []
                 for rd in d['rp_detail']:
                     data_sim.append({
-                        "Saham": rd['stock'],
+                        "Saham":    rd['stock'],
                         "Lot Jual": int(rd['lot_sell']),
-                        "Harga": rd['price'],
-                        "Max Lot": int(rd['lot_sell'])
+                        "Harga":    rd['price'],
+                        "RP Value": round(rd['rp_maks'], 0),  # default = nilai jual × 1.01
+                        "_lot_op":  int(rd['lot_op']),
                     })
                 df_sim = pd.DataFrame(data_sim)
-                st.write("Silakan ubah 'Lot Jual' untuk menyimulasikan nominal RP:")
+
                 edited_df = st.data_editor(
                     df_sim,
                     column_config={
-                        "Lot Jual": st.column_config.NumberColumn("Lot Jual", min_value=0, max_value=None, step=1),
-                        "Harga": st.column_config.NumberColumn("Harga", format="Rp %d"),
+                        "Saham":    st.column_config.TextColumn("Saham", disabled=True),
+                        "Lot Jual": st.column_config.NumberColumn("Lot Jual", min_value=0, step=1,
+                            disabled=not mode1),
+                        "Harga":    st.column_config.NumberColumn("Harga", format="Rp %d", disabled=True),
+                        "RP Value": st.column_config.NumberColumn("RP Value (Rp)", min_value=0, step=1_000_000.0,
+                            disabled=not mode2),
+                        "_lot_op":  st.column_config.NumberColumn("Lot OP", disabled=True),
                     },
                     hide_index=True,
                     use_container_width=True
                 )
-                for idx, row in edited_df.iterrows():
-                    val = row['Lot Jual'] * row['Harga']
-                    original_data = next(item for item in d['rp_detail'] if item["stock"] == row["Saham"])
-                    rp_inputs[row['Saham']] = {
-                        'rp_value': val, 
-                        'lot_keluar': min(row['Lot Jual'], original_data['lot_op']) 
+
+                for _, row in edited_df.iterrows():
+                    stock    = row['Saham']
+                    lot_jual = row['Lot Jual'] if mode1 else next(
+                        rd['lot_sell'] for rd in d['rp_detail'] if rd['stock'] == stock
+                    )
+                    lot_op   = row['_lot_op']
+                    lot_keluar = min(lot_jual, lot_op)
+                    harga    = row['Harga']
+
+                    if mode2:
+                        rp_value = row['RP Value']
+                    else:
+                        rp_value = lot_jual * harga * 1.01
+
+                    rp_inputs[stock] = {
+                        'rp_value':   rp_value,
+                        'lot_keluar': lot_keluar if mode1 else 0,  # kolateral hanya berkurang jika mode1 aktif
                     }
 
             total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
