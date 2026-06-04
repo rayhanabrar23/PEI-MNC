@@ -823,11 +823,15 @@ if st.session_state.get('sid_results'):
             
             st.subheader("Step 1 — Atur Nilai RP")
             
+            saved_input = st.session_state.get(f'sim_saved_input_{sel_sid}', {})
+            saved_mode1 = saved_input.get('mode1', True)
+            saved_mode2 = saved_input.get('mode2', False)
+            
             col_m1, col_m2 = st.columns(2)
             with col_m1:
-                mode1 = st.checkbox("📦 Simulasi Lot Saham", value=True, key=f"mode1_{sel_sid}")
+                mode1 = st.checkbox("📦 Simulasi Lot Saham", value=saved_mode1, key=f"mode1_{sel_sid}")
             with col_m2:
-                mode2 = st.checkbox("💰 Simulasi Nilai RP", key=f"mode2_{sel_sid}")
+                mode2 = st.checkbox("💰 Simulasi Nilai RP", value=saved_mode2, key=f"mode2_{sel_sid}")
             
             rp_inputs = {}
             
@@ -837,17 +841,20 @@ if st.session_state.get('sid_results'):
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
             elif not d.get('has_rp'):
-                st.info("Tidak ada transaksi jual kemarin.")
-            else:
-                # Pakai rp_detail dari original agar tabel input tidak berubah
+                            st.info("Tidak ada transaksi jual kemarin.")
+                        # ── GANTI BLOK data_sim LAMA DENGAN INI ──
                 rp_detail_ref = original_d.get('rp_detail', d['rp_detail'])
+                saved_input = st.session_state.get(f'sim_saved_input_{sel_sid}', {})
+                saved_lots  = saved_input.get('lot_inputs', {})
+                saved_rps   = saved_input.get('rp_inputs', {})
+            
                 data_sim = []
-                for rd in rp_detail_ref:
+                for idx, rd in enumerate(rp_detail_ref):
                     data_sim.append({
                         "Saham":    rd['stock'],
-                        "Lot Jual": int(rd['lot_sell']),
+                        "Lot Jual": saved_lots.get(rd['stock'], int(rd['lot_sell'])),
                         "Harga":    rd['price'],
-                        "RP Value": round(rd['rp_maks'], 0),
+                        "RP Value": saved_rps.get(idx, round(rd['rp_maks'], 0)),
                         "_lot_op":  int(rd['lot_op']),
                     })
                 df_sim = pd.DataFrame(data_sim)
@@ -1003,6 +1010,12 @@ if st.session_state.get('sid_results'):
                 updated['checks'] = new_checks
                 st.session_state['sid_results'][sel_sid] = updated
                 st.write("DEBUG:", st.session_state['sid_results'][sel_sid].get('is_simulated'))
+                st.session_state[f'sim_saved_input_{sel_sid}'] = {
+                    'lot_inputs': {row['Saham']: row['Lot Jual'] for _, row in edited_df1.iterrows()},
+                    'rp_inputs':  {i: float(edited_df2.loc[i, 'RP Value']) for i in edited_df2.index} if mode2 else {},
+                    'mode1': mode1,
+                    'mode2': mode2,
+                }
                 st.rerun()
             
             if col_b2.button("↩️ Reset Nasabah Ini", use_container_width=True):
