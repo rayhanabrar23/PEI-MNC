@@ -434,24 +434,45 @@ def lolos_lr(data):
 # AUTO ADJUST LR
 # ─────────────────────────────────────────────
 def auto_adjust_loan(df_buy, sid, max_loan_val, orig_loan_val, closing_prices):
-    df_updated = df_buy.copy()
-    rows_idx   = df_buy[df_buy.iloc[:, 0].astype(str) == sid].index
-    if len(rows_idx) == 0: return df_updated
+    df_updated = df_buy.copy().reset_index(drop=True)
+    df_ref     = df_buy.copy().reset_index(drop=True)
+
+    # Pastikan kolom ke-13 dan 14 ada
+    n_cols = len(df_updated.columns)
+    if n_cols < 14:
+        st.warning(f"auto_adjust_loan: df_buy hanya punya {n_cols} kolom, minimal butuh 14.")
+        return df_updated
+
+    col_sid   = df_updated.columns[0]
+    col_stock = df_updated.columns[1]
+    col_vol   = df_updated.columns[13]
+    col_val   = df_updated.columns[14] if n_cols > 14 else None
+
+    rows_idx = df_updated[df_updated[col_sid].astype(str) == sid].index.tolist()
+    if not rows_idx:
+        return df_updated
+
     if orig_loan_val <= 0 or max_loan_val <= 0:
         for i in rows_idx:
-            df_updated.at[i, df_updated.columns[13]] = 0
-            df_updated.at[i, df_updated.columns[14]] = 0
+            df_updated.at[i, col_vol] = 0
+            if col_val:
+                df_updated.at[i, col_val] = 0
         return df_updated
+
     ratio = max_loan_val / orig_loan_val
     for i in rows_idx:
-        old_vol = pd.to_numeric(df_buy.at[i, df_buy.columns[13]], errors='coerce') or 0
-        stock   = str(df_buy.at[i, df_buy.columns[1]]).strip().upper()
+        old_vol = pd.to_numeric(df_ref.at[i, col_vol], errors='coerce')
+        if pd.isna(old_vol):
+            old_vol = 0.0
+        stock   = str(df_ref.at[i, col_stock]).strip().upper()
         price   = closing_prices.get(stock, 0)
         new_vol = int((old_vol * ratio) // 100) * 100
         new_vol = max(new_vol, 0)
         new_val = new_vol * price if price > 0 else 0
-        df_updated.at[i, df_updated.columns[13]] = new_vol
-        df_updated.at[i, df_updated.columns[14]] = new_val
+        df_updated.at[i, col_vol] = new_vol
+        if col_val:
+            df_updated.at[i, col_val] = new_val
+
     return df_updated
 
 # ─────────────────────────────────────────────
