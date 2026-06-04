@@ -317,7 +317,10 @@ if all(required_files):
                 total_buy_val = sum(b['value'] for b in buy_stocks.values())
                 # Ceiling LR = min(nilai beli kemarin, avail_limit + rp_maks)
                 avail_efektif = avail_lim + total_rp_maks
-                ceiling_lr    = min(total_buy_val, avail_efektif)
+                buy_with_buffer = total_buy_val * 1.1
+                ceiling_lr = min(buy_with_buffer, avail_efektif)
+                # flag apakah buffer berlaku atau tidak
+                buffer_lr_berlaku = buy_with_buffer <= avail_efektif
 
                 # Rasio LR = (loan_after_rp + accrued + lr_diajukan) / coll_after_lr
                 numerator_lr = loan_after_rp + accrued + ceiling_lr
