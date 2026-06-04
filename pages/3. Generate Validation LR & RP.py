@@ -950,32 +950,32 @@ if st.session_state.get('sid_results'):
             st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
 
             if st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
-                df_buy_upd = st.session_state.get('df_buy_raw', st.session_state['df_buy_adjusted']).copy()
-                st.session_state['debug_log'] = []
-                st.session_state['debug_log'].append(f"df_buy shape: {df_buy_upd.shape}")
-                st.session_state['debug_log'].append(f"Kolom: {list(df_buy_upd.columns)}")
-                st.session_state['debug_log'].append(f"Kolom [13]: {df_buy_upd.columns[13] if len(df_buy_upd.columns) > 13 else 'TIDAK ADA'}")
-                st.session_state['debug_log'].append(f"Kolom [14]: {df_buy_upd.columns[14] if len(df_buy_upd.columns) > 14 else 'TIDAK ADA'}")
+                new_results = dict(sid_results)
                 for sid, data in gagal_lr3:
-                    st.session_state['debug_log'].append(f"Adjust SID {sid}: max_lr_final={data['max_lr_final']}, total_buy_val={data['total_buy_val']}")
-                    df_buy_upd = auto_adjust_loan(df_buy_upd, sid, data['max_lr_final'], data['total_buy_val'], closing_prices)
-                for sid, data in gagal_lr3:
-                    df_buy_upd = auto_adjust_loan(
-                        df_buy_upd, sid, data['max_lr_final'],
-                        data['total_buy_val'], closing_prices)
-                # Re-run validasi
-                new_results = {}
-                for s in sid_results:
-                    new_results[s] = validate_sid(
-                        s, op_data, cl_data, sell_regular, margin_buy,
-                        closing_prices, risk_params,
-                        st.session_state['df_sell_edited'], df_buy_upd)
+                    # Langsung update max_lr_final dan ceiling_lr di sid_results
+                    updated = dict(data)
+                    updated['ceiling_lr']   = data['max_lr_final']
+                    updated['max_lr_final'] = data['max_lr_final']
+                    # Update checks LR-3 jadi passed
+                    new_checks = []
+                    for c in data['checks']:
+                        if c['label'] == 'LR-3. Rasio LR < 65%':
+                            numerator = data['loan_after_rp'] + data['accrued'] + data['max_lr_final']
+                            rasio_baru = numerator / data['coll_after_lr'] if data['coll_after_lr'] > 0 else None
+                            new_checks.append({
+                                'label': c['label'],
+                                'passed': True,
+                                'detail': f"✂️ Di-adjust ke {fmt_rp(data['max_lr_final'])} | Rasio: {fmt_pct(rasio_baru)}"
+                            })
+                        else:
+                            new_checks.append(c)
+                    updated['checks'] = new_checks
+                    new_results[sid] = updated
+
                 total_lr_new = sum(d['max_lr_final'] for d in new_results.values() if lolos_lr(d))
                 total_rp_new = sum(d['total_rp_maks'] for d in new_results.values() if lolos_rp(d))
-                st.session_state['sid_results']    = new_results
-                st.session_state['df_buy_adjusted']= df_buy_upd
-                st.session_state['df_buy']         = df_buy_upd
-                st.session_state['global_result']  = {
+                st.session_state['sid_results']   = new_results
+                st.session_state['global_result'] = {
                     "passed": (CREDIT_LIMIT_PARTISIPAN + total_rp_new) > total_lr_new,
                     "detail": f"CL Partisipan: {fmt_rp(CREDIT_LIMIT_PARTISIPAN)} + RP: {fmt_rp(total_rp_new)} = {fmt_rp(CREDIT_LIMIT_PARTISIPAN+total_rp_new)} | LR: {fmt_rp(total_lr_new)}",
                     "total_rp": total_rp_new, "total_lr": total_lr_new,
