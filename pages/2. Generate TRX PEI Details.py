@@ -276,7 +276,7 @@ if all(required_files):
                     lot_keluar = min(lot_sell, lot_op)   # saham yang bisa keluar dari kolateral
                     price_s  = price_map.get(stock, 0)
                     rp_min   = lot_keluar * price_s      # nilai minimum RP (sesuai lot di OP)
-                    rp_maks  = sdata['value']            # nilai maksimum RP (nilai transaksi jual kemarin)
+                    rp_maks = sdata['value'] * 1.01            # nilai maksimum RP (nilai transaksi jual kemarin)
                     ada_di_op = lot_op > 0
                     rp_detail.append({
                         'stock':      stock,
