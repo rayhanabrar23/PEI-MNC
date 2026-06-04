@@ -704,7 +704,7 @@ if st.session_state.get('sid_results'):
         "📤 LANGKAH 1 — Repayment (RP)",
         "📥 LANGKAH 2 — Loan Request (LR)",
         "🎛️ Simulator RP → LR",
-        "🌐 Validasi Global",
+        "🌐 Validasi Limit Participant",
         "❌ Nasabah Gagal",
         "⚡ Auto-Adjust LR",
         "📥 Export",
@@ -905,7 +905,7 @@ if st.session_state.get('sid_results'):
 
     # ── TAB GLOBAL ────────────────────────────────────────────
     with tab_global:
-        st.subheader("Validasi Global — Credit Limit Partisipan")
+        st.subheader("Validasi Limit Participant — Credit Limit Partisipan")
         if global_result["passed"]:
             st.success(f"✅ LOLOS — {global_result['detail']}")
         else:
