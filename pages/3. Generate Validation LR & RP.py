@@ -932,7 +932,9 @@ if st.session_state.get('sid_results'):
             st.dataframe(pd.DataFrame(prev_rows), use_container_width=True, hide_index=True)
 
             if st.button("⚡ Terapkan Auto-Adjust & Validasi Ulang", type="primary", use_container_width=True):
+                st.write("🔄 Tombol diklik, memproses...")
                 df_buy_upd = st.session_state['df_buy_adjusted'].copy()
+                st.write(f"df_buy_upd shape: {df_buy_upd.shape}, kolom: {list(df_buy_upd.columns)}")
                 for sid, data in gagal_lr3:
                     df_buy_upd = auto_adjust_loan(
                         df_buy_upd, sid, data['max_lr_final'],
