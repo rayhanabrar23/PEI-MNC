@@ -759,11 +759,11 @@ if st.session_state.get('sid_results'):
             icon = "✅" if ok else "❌"
             with st.expander(f"{icon} {sid} — {data['name']}  |  Max LR Final: {fmt_rp(data['max_lr_final'])}", expanded=not ok):
 
-            st.info(
-                f"ℹ️ Avail Efektif dan Loan After RP dihitung berdasarkan "
-                f"asumsi RP sistem ({fmt_rp(data['total_rp_maks'])}). "
-                f"Jika RP aktual berbeda, angka LR ini bisa berubah."
-            ) 
+                st.info(
+                    f"ℹ️ Avail Efektif dan Loan After RP dihitung berdasarkan "
+                    f"asumsi RP sistem ({fmt_rp(data['total_rp_maks'])}). "
+                    f"Jika RP aktual berbeda, angka LR ini bisa berubah."
+                ) 
                     
                 col_a, col_b, col_c, col_d = st.columns(4)
                 col_a.metric("Loan After RP",    fmt_rp(data['loan_after_rp']))
@@ -873,7 +873,9 @@ if st.session_state.get('sid_results'):
 
             avail_eff_sim  = d['avail_limit'] + total_rp_sim
             total_beli_sim = sum(b['value'] for b in mb_sid.values())
-            ceiling_sim    = min(total_beli_sim, avail_eff_sim)
+            buy_with_buffer_sim = total_beli_sim * 1.1
+            ceiling_sim         = min(buy_with_buffer_sim, avail_eff_sim)
+            buffer_berlaku_sim  = buy_with_buffer_sim <= avail_eff_sim
             num_lr_sim     = loan_after_rp_sim + d['accrued'] + ceiling_sim
             rasio_lr_sim   = num_lr_sim / coll_lr_sim if coll_lr_sim > 0 else None
             max63_sim      = max(coll_lr_sim * 0.63 - (loan_after_rp_sim + d['accrued']), 0)
