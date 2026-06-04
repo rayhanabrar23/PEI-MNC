@@ -776,25 +776,20 @@ if st.session_state.get('sid_results'):
             st.subheader("Step 1 — Atur Nilai RP")
             total_rp_sim = 0
             rp_inputs = {}
-            # ... (setelah blok edited_df) ...
-            total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
             elif not d.get('has_rp'):
                 st.info("Tidak ada transaksi jual kemarin.")
             else:
-                # 1. Siapkan data untuk tabel editor
                 data_sim = []
                 for rd in d['rp_detail']:
                     data_sim.append({
                         "Saham": rd['stock'],
                         "Lot Jual": int(rd['lot_sell']),
                         "Harga": rd['price'],
-                        "Max Lot": int(rd['lot_sell']) # User bisa tahu batas maksimal jual
+                        "Max Lot": int(rd['lot_sell'])
                     })
                 df_sim = pd.DataFrame(data_sim)
-
-                # 2. Tampilkan Tabel Editor
                 st.write("Silakan ubah 'Lot Jual' untuk menyimulasikan nominal RP:")
                 edited_df = st.data_editor(
                     df_sim,
@@ -805,17 +800,17 @@ if st.session_state.get('sid_results'):
                     hide_index=True,
                     use_container_width=True
                 )
-
-                # 3. Masukkan hasil edit ke dalam rp_inputs
-                rp_inputs = {}
                 for idx, row in edited_df.iterrows():
                     val = row['Lot Jual'] * row['Harga']
-                    # Cari lot_keluar dari data asli (rd) untuk perhitungan collateral
                     original_data = next(item for item in d['rp_detail'] if item["stock"] == row["Saham"])
                     rp_inputs[row['Saham']] = {
                         'rp_value': val, 
                         'lot_keluar': min(row['Lot Jual'], original_data['lot_op']) 
                     }
+
+            total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
+
+            # Hitung ulang setelah RP simulator
 
             # Hitung ulang setelah RP simulator
             stocks_after_rp_sim = dict(d['stocks_op'])
