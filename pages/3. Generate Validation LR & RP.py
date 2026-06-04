@@ -841,7 +841,8 @@ if st.session_state.get('sid_results'):
             if d['rp_skipped']:
                 st.info("Loan Existing = 0 → RP tidak diperlukan. Lanjut ke LR langsung.")
             elif not d.get('has_rp'):
-                            st.info("Tidak ada transaksi jual kemarin.")
+                st.info("Tidak ada transaksi jual kemarin.")
+            else:
                         # ── GANTI BLOK data_sim LAMA DENGAN INI ──
                 rp_detail_ref = original_d.get('rp_detail', d['rp_detail'])
                 saved_input = st.session_state.get(f'sim_saved_input_{sel_sid}', {})
