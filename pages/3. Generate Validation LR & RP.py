@@ -995,6 +995,9 @@ if st.session_state.get('sid_results'):
                             new_checks.append(c)
                     updated['checks'] = new_checks
                     st.session_state['sid_results'][sel_sid] = updated
+                    st.write("✅ Tersimpan. is_simulated:", st.session_state['sid_results'][sel_sid].get('is_simulated'))
+                    st.write("total_rp_maks:", st.session_state['sid_results'][sel_sid].get('total_rp_maks'))
+                    st.write("loan_after_rp:", st.session_state['sid_results'][sel_sid].get('loan_after_rp'))
                     st.success(f"✅ Simulasi {sel_sid} disimpan!")
                     st.rerun()
             
