@@ -811,8 +811,6 @@ if st.session_state.get('sid_results'):
             total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
 
             # Hitung ulang setelah RP simulator
-
-            # Hitung ulang setelah RP simulator
             stocks_after_rp_sim = dict(d['stocks_op'])
             for stock, v in rp_inputs.items():
                 if v['lot_keluar'] > 0:
