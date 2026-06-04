@@ -649,6 +649,9 @@ if run_btn:
         'df_sell_edited': df_sell.copy(),
         'df_buy':         df_buy.copy(),
         'df_buy_adjusted':df_buy.copy(),
+    st.write("Sheet names:", xls.sheet_names)
+    st.write("df_buy columns:", list(df_buy.columns))
+    st.write("df_buy shape:", df_buy.shape)
     })
     st.success("✅ Validasi Selesai!")
 
