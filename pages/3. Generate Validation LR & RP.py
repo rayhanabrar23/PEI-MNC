@@ -199,10 +199,6 @@ def load_hasil_mnc(uploaded_file):
     else:
         st.error(f"❌ Sheet untuk Loan Request tidak ditemukan! Sheet yang tersedia di Excel Anda: {xls.sheet_names}")
         st.stop()
-                
-    st.write("Sheet names:", xls.sheet_names)
-    st.write("df_buy columns:", list(df_buy.columns))
-    st.write("df_buy shape:", df_buy.shape)
             
     # Load raw buy sheet (data transaksi per baris, bukan summary)
     if "Buy (Loan)" in xls.sheet_names:
@@ -523,9 +519,13 @@ def generate_loan_excel(sid_results, margin_buy):
         if not lolos_lr(data): continue
         if data['ceiling_lr'] > 0:
             s1.append({"Participant Code": "EP", "SID Client": sid, "Loan Value": data['max_lr_final']})
-        for stock, bdata in margin_buy.get(sid, {}).items():
-            if bdata['lot'] > 0:
-                s2.append({"SID Client": sid, "Stock Code": stock, "Quantity": int(bdata['lot'])})
+        # Hitung lot beli baru = stocks_after_lr dikurangi stocks_after_rp
+        stocks_lr = data.get('stocks_after_lr', {})
+        stocks_rp = data.get('stocks_after_rp', {})
+        for stock, lot_lr in stocks_lr.items():
+            lot_beli = lot_lr - stocks_rp.get(stock, 0)
+            if lot_beli > 0:
+                s2.append({"SID Client": sid, "Stock Code": stock, "Quantity": int(lot_beli)})
     buf = io.BytesIO()
     with pd.ExcelWriter(buf, engine="openpyxl") as w:
         pd.DataFrame(s1).to_excel(w, sheet_name="Loan Request",      index=False)
@@ -980,6 +980,23 @@ if st.session_state.get('sid_results'):
             
             if col_b1.button("💾 Simpan Simulasi", use_container_width=True, type="primary"):
                 updated = copy.deepcopy(st.session_state['sid_results'][sel_sid])
+                # Update rp_detail dengan lot_keluar dan rp_maks hasil simulasi
+                new_rp_detail = []
+                for rd in original_d.get('rp_detail', d['rp_detail']):
+                    stock = rd['stock']
+                    if stock in rp_inputs:
+                        lot_jual_sim = int(
+                            edited_df1.loc[edited_df1['Saham'] == stock, 'Lot Jual'].values[0]
+                        ) if mode1 else rd['lot_sell']
+                        new_rp_detail.append({
+                            **rd,
+                            'lot_sell':   lot_jual_sim,
+                            'lot_keluar': rp_inputs[stock]['lot_keluar'],
+                            'rp_maks':    rp_inputs[stock]['rp_value'],
+                        })
+                    else:
+                        new_rp_detail.append(rd)
+                updated['rp_detail'] = new_rp_detail
                 updated['is_simulated']    = True
                 updated['loan_after_rp']   = loan_after_rp_sim
                 updated['coll_after_rp']   = coll_after_rp_sim
@@ -1010,7 +1027,6 @@ if st.session_state.get('sid_results'):
                         new_checks.append(c)
                 updated['checks'] = new_checks
                 st.session_state['sid_results'][sel_sid] = updated
-                st.write("DEBUG:", st.session_state['sid_results'][sel_sid].get('is_simulated'))
                 st.session_state[f'sim_saved_input_{sel_sid}'] = {
                     'lot_inputs': {row['Saham']: row['Lot Jual'] for _, row in edited_df1.iterrows()},
                     'rp_inputs':  {i: float(edited_df2.loc[i, 'RP Value']) for i in edited_df2.index} if mode2 else {},
@@ -1031,13 +1047,13 @@ if st.session_state.get('sid_results'):
                     st.session_state['sid_results'] = copy.deepcopy(original)
                     st.rerun()
             
-                # ── TAB GLOBAL ────────────────────────────────────────────
-                with tab_global:
-                    st.subheader("Validasi Limit Participant — Credit Limit Partisipan")
-                    if global_result["passed"]:
-                        st.success(f"✅ LOLOS — {global_result['detail']}")
-                    else:
-                        st.error(f"❌ GAGAL — {global_result['detail']}")
+    # ── TAB GLOBAL ────────────────────────────────────────────
+    with tab_global:
+        st.subheader("Validasi Limit Participant — Credit Limit Partisipan")
+        if global_result["passed"]:
+            st.success(f"✅ LOLOS — {global_result['detail']}")
+        else:
+            st.error(f"❌ GAGAL — {global_result['detail']}")
 
     # ── TAB GAGAL ─────────────────────────────────────────────
     with tab_gagal:
