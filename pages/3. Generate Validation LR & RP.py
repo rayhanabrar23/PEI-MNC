@@ -730,6 +730,13 @@ if st.session_state.get('sid_results'):
                 col_d.metric("RP Maks", fmt_rp(data['total_rp_maks']))
                 st.caption(f"RP Min: {fmt_rp(data['total_rp_min'])}  |  RP Maks: {fmt_rp(data['total_rp_maks'])}")
 
+                rp_sistem = data['total_rp_maks']  # sudah include buffer 1%
+                st.warning(
+                   f"⚠️ Sistem mengasumsikan RP = {fmt_rp(rp_sistem)} "
+                   f"(nilai jual × 1.01). Jika partisipan input lebih besar, "
+                   f"hasil LR di bawah perlu dihitung ulang."
+                )
+                    
                 if data['rp_detail']:
                     df_rd = pd.DataFrame([{
                         'Saham': r['stock'], 'Lot Jual': int(r['lot_sell']),
@@ -751,6 +758,13 @@ if st.session_state.get('sid_results'):
             ok   = lolos_lr(data)
             icon = "✅" if ok else "❌"
             with st.expander(f"{icon} {sid} — {data['name']}  |  Max LR Final: {fmt_rp(data['max_lr_final'])}", expanded=not ok):
+
+            st.info(
+                f"ℹ️ Avail Efektif dan Loan After RP dihitung berdasarkan "
+                f"asumsi RP sistem ({fmt_rp(data['total_rp_maks'])}). "
+                f"Jika RP aktual berbeda, angka LR ini bisa berubah."
+            ) 
+                    
                 col_a, col_b, col_c, col_d = st.columns(4)
                 col_a.metric("Loan After RP",    fmt_rp(data['loan_after_rp']))
                 col_b.metric("Avail Efektif",    fmt_rp(data['avail_efektif']), help="Avail Limit + RP Lolos")
