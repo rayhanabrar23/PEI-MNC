@@ -714,7 +714,7 @@ if st.session_state.get('sid_results'):
     with tab_rp:
         st.info("💡 Input RP **terlebih dahulu**. Setelah RP diinput, loan outstanding berkurang dan available limit naik.")
         for sid, data in sid_results.items():
-            if not data.get('has_rp'): continue
+            if not data.get('has_rp') or data.get('rp_skipped') or data['total_rp_maks'] <= 0: continue
             skip = data.get('rp_skipped')
             ok   = lolos_rp(data)
             icon = "⏭" if skip else ("✅" if ok else "❌")
