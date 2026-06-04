@@ -2,11 +2,12 @@ import streamlit as st
 import pandas as pd
 import io
 from datetime import datetime
+import copy
 
 # ── SESSION STATE INIT ────────────────────────────────────────
 for key in ['df_sell_edited','sid_results','global_result','df_buy',
             'df_buy_adjusted','op_data','cl_data','closing_prices',
-            'risk_params','clamped_warnings']:
+            'risk_params','clamped_warnings','sid_results_original']:
     if key not in st.session_state:
         st.session_state[key] = None if key != 'clamped_warnings' else []
 
@@ -664,6 +665,7 @@ if run_btn:
         'df_buy':         df_buy.copy(),
         'df_buy_raw':     df_buy_raw.copy(),
         'df_buy_adjusted':df_buy_raw.copy(),
+        'sid_results_original': copy.deepcopy(sid_results),
     })
     st.success("✅ Validasi Selesai!")
 
@@ -750,6 +752,11 @@ if st.session_state.get('sid_results'):
                     if c['passed']: st.success(f"✅ **{c['label']}** {c['detail']}")
                     else:           st.error(  f"❌ **{c['label']}** {c['detail']}")
 
+            # Tambah cek is_simulated
+            simulated = data.get('is_simulated', False)
+            icon = "⏭" if skip else ("✅" if ok else "❌")
+            if simulated: icon += " ✏️"
+
     # ── TAB LR ────────────────────────────────────────────────
     with tab_lr:
         st.info("💡 Input LR **setelah RP selesai**. Collateral sudah ditambah saham beli baru. Ceiling LR = min(Nilai Beli, Avail Limit + RP).")
@@ -783,6 +790,10 @@ if st.session_state.get('sid_results'):
                     if not c['label'].startswith('LR-'): continue
                     if c['passed']: st.success(f"✅ **{c['label']}** {c['detail']}")
                     else:           st.error(  f"❌ **{c['label']}** {c['detail']}")
+
+            simulated = data.get('is_simulated', False)
+            icon = "✅" if ok else "❌"
+            if simulated: icon += " ✏️"
 
     # ── TAB SIMULATOR ─────────────────────────────────────────
     with tab_sim:
@@ -947,6 +958,64 @@ if st.session_state.get('sid_results'):
                                   'Sumber':'Sisa OP' if stk in stocks_after_rp_sim else 'Beli Baru'})
                 st.dataframe(pd.DataFrame(crows), use_container_width=True, hide_index=True)
 
+
+            st.divider()
+            btn1, btn2, btn3 = st.columns(3)
+            
+            with btn1:
+                if st.button("💾 Simpan Simulasi", use_container_width=True, type="primary"):
+                    updated = copy.deepcopy(sid_results[sel_sid])
+                    updated['is_simulated']  = True
+                    updated['loan_after_rp'] = loan_after_rp_sim
+                    updated['coll_after_rp'] = coll_after_rp_sim
+                    updated['coll_after_lr'] = coll_lr_sim
+                    updated['ceiling_lr']    = ceiling_sim
+                    updated['avail_efektif'] = avail_eff_sim
+                    updated['max_lr_63']     = max63_sim
+                    updated['max_lr_65']     = max65_sim
+                    updated['max_lr_final']  = max_final_sim
+                    updated['total_rp_maks'] = total_rp_sim
+                    updated['loan_after_rp'] = loan_after_rp_sim
+                    updated['stocks_after_rp'] = stocks_after_rp_sim
+                    updated['stocks_after_lr'] = stocks_after_lr_sim
+                    # Update checks RP-3 dan LR-3
+                    new_checks = []
+                    for c in updated['checks']:
+                        if c['label'] == 'RP-3. Rasio After RP < 65%':
+                            new_checks.append({
+                                'label': c['label'],
+                                'passed': rasio_rp_sim is not None and rasio_rp_sim < RATIO_THRESHOLD,
+                                'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_rp_sim)} | Loan After RP: {fmt_rp(loan_after_rp_sim)} | Coll: {fmt_rp(coll_after_rp_sim)}"
+                            })
+                        elif c['label'] == 'LR-3. Rasio LR < 65%':
+                            new_checks.append({
+                                'label': c['label'],
+                                'passed': rasio_lr_sim is not None and rasio_lr_sim < RATIO_THRESHOLD,
+                                'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_lr_sim)} | Ceiling LR: {fmt_rp(ceiling_sim)} | Coll: {fmt_rp(coll_lr_sim)}"
+                            })
+                        else:
+                            new_checks.append(c)
+                    updated['checks'] = new_checks
+                    st.session_state['sid_results'][sel_sid] = updated
+                    st.success(f"✅ Simulasi {sel_sid} disimpan!")
+                    st.rerun()
+            
+            with btn2:
+                if st.button("↩️ Reset Nasabah Ini", use_container_width=True):
+                    original = st.session_state.get('sid_results_original', {})
+                    if sel_sid in original:
+                        st.session_state['sid_results'][sel_sid] = copy.deepcopy(original[sel_sid])
+                        st.success(f"↩️ {sel_sid} direset ke nilai awal!")
+                        st.rerun()
+            
+            with btn3:
+                if st.button("🔄 Reset Semua", use_container_width=True):
+                    original = st.session_state.get('sid_results_original', {})
+                    if original:
+                        st.session_state['sid_results'] = copy.deepcopy(original)
+                        st.success("🔄 Semua nasabah direset ke nilai awal!")
+                        st.rerun()
+
     # ── TAB GLOBAL ────────────────────────────────────────────
     with tab_global:
         st.subheader("Validasi Limit Participant — Credit Limit Partisipan")
@@ -1099,3 +1168,5 @@ if st.session_state.get('sid_results'):
             st.download_button("⬇️ Rekap LR Belum Settled", data=buf_rlr,
                 file_name=fname_rlr, use_container_width=True, type="primary",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
+
+
