@@ -691,8 +691,8 @@ with tab_mnc:
         df_buy_raw = df_buy.copy()
         return df_sell, df_buy, df_buy_raw
 
-       def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
-                             closing_prices, risk_params, df_sell, df_buy, risk_avq):
+    def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
+                          closing_prices, risk_params, df_sell, df_buy, risk_avq):
         op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"available_limit":0,"name":sid,"stocks":{}})
         cl  = cl_data.get(sid, {"available_limit":0,"name":sid})
         loan_ex   = op["loan_existing"]
