@@ -691,8 +691,8 @@ with tab_mnc:
         df_buy_raw = df_buy.copy()
         return df_sell, df_buy, df_buy_raw
 
-   def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
-                         closing_prices, risk_params, df_sell, df_buy, risk_avq):
+       def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
+                             closing_prices, risk_params, df_sell, df_buy, risk_avq):
         op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"available_limit":0,"name":sid,"stocks":{}})
         cl  = cl_data.get(sid, {"available_limit":0,"name":sid})
         loan_ex   = op["loan_existing"]
@@ -828,7 +828,6 @@ with tab_mnc:
             "coll_before_rp": calc_collateral(stocks_op, closing_prices, risk_params)[0],
             "coll_after_rp": coll_after_rp2, "coll_after_lr": coll_after_lr,
             "ceiling_lr": ceiling_lr, "max_lr_63": max_lr_63, "max_lr_65": max_lr_65,
-            "max_lr_final": max_lr_final, "avail_efektif": avail_efektif, "total_buy_val": total_buy_val,
             "max_lr_final": max_lr_final, "avail_efektif": avail_efektif, "total_buy_val": total_buy_val,
             "buy_status_detail": buy_status_detail,
         }
