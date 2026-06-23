@@ -11,7 +11,7 @@ st.title("📊 PEI Tools — TRX PEI & Validasi MNC")
 # SESSION STATE INIT
 # ─────────────────────────────────────────────
 for key in [
-    'shared_closing_prices', 'shared_risk_params',
+    'shared_closing_prices', 'shared_risk_params', 'shared_risk_avail_qty',
     'shared_margin_buy', 'shared_sell_regular', 'shared_op_data',
     # TRX PEI
     'pei_results',
@@ -100,20 +100,34 @@ def load_closing_price(uploaded_file) -> dict:
             result[code] = float(price)
     return result
 
-def load_risk_parameter(uploaded_file) -> dict:
-    result  = {}
+def load_risk_parameter(uploaded_file) -> tuple:
+    result_hc  = {}
+    result_avq = {}
     content = uploaded_file.read().decode("utf-8", errors="replace")
     uploaded_file.seek(0)
     for line in content.strip().splitlines():
         line = line.strip()
         if not line or line.startswith("StockCode"): continue
         parts = line.split("|")
-        if len(parts) < 3: continue
+        if len(parts) < 4: continue
         code = parts[0].strip().upper()
-        try: hc = float(parts[2]) / 100.0
-        except: hc = 0.0
-        result[code] = hc
-    return result
+        try: hc  = float(parts[2]) / 100.0
+        except: hc  = 0.0
+        try: avq = float(parts[3])
+        except: avq = 0.0
+        result_hc[code]  = hc
+        result_avq[code] = avq
+    return result_hc, result_avq
+
+def get_loan_status(avail_qty, volume_buy):
+    if volume_buy <= 0:
+        return ""
+    if avail_qty < 0:
+        return ""
+    if avail_qty > volume_buy:
+        return "LOAN PEI"
+    else:
+        return "LOAN PARTIAL"
 
 def parse_op_file(content: str) -> dict:
     result = {}
@@ -209,7 +223,9 @@ if shared_ready:
     if st.session_state.get('_shared_file_sig') != file_sig:
         with st.spinner("⚙️ Memuat file bersama..."):
             st.session_state['shared_closing_prices'] = load_closing_price(file_cp)
-            st.session_state['shared_risk_params']    = load_risk_parameter(file_rp)
+            risk_hc, risk_avq = load_risk_parameter(file_rp)
+            st.session_state['shared_risk_params']    = risk_hc
+            st.session_state['shared_risk_avail_qty'] = risk_avq
             op_content = file_op.read().decode("utf-8", errors="replace")
             file_op.seek(0)
             st.session_state['shared_op_data']        = parse_op_file(op_content)
@@ -363,12 +379,20 @@ with tab_pei:
                         loan_after_rp = max(loan_ex - total_rp_maks, 0)
                         rasio_rp = (loan_after_rp + accrued) / coll_after_rp if coll_after_rp > 0 else None
 
-                        stocks_after_lr = dict(stocks_after_rp)
+                        risk_avq = st.session_state['shared_risk_avail_qty']
+
+                        stocks_after_lr   = dict(stocks_after_rp)
+                        buy_status_detail = []
                         for stock, bdata in buy_stocks.items():
                             stocks_after_lr[stock] = stocks_after_lr.get(stock, 0) + bdata['lot']
+                            avq    = risk_avq.get(stock, 0.0)
+                            status = get_loan_status(avq, bdata['lot'])
+                            buy_status_detail.append({
+                                'stock': stock, 'lot_beli': bdata['lot'],
+                                'available_qty': avq, 'status': status,
+                            })
 
                         coll_after_lr, _ = calc_collateral(stocks_after_lr, closing_prices, risk_params_hc)
-
                         total_buy_val = sum(b['value'] for b in buy_stocks.values())
                         avail_efektif = avail_lim + total_rp_maks
                         ceiling_lr    = min(total_buy_val * 1.1, avail_efektif)
@@ -389,6 +413,7 @@ with tab_pei:
                             'total_buy_val': total_buy_val, 'avail_efektif': avail_efektif,
                             'ceiling_lr': ceiling_lr, 'rasio_lr': rasio_lr,
                             'max_lr_63': max_lr_63, 'max_lr_65': max_lr_65, 'max_lr_final': max_lr_final,
+                            'buy_status_detail': buy_status_detail,
                         }
 
                 st.session_state['pei_results'] = results
@@ -460,9 +485,12 @@ with tab_pei:
                 rasio_val    = f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "N/A"
                 status_rasio = "✅ LOLOS" if d['rasio_lr'] is not None and d['rasio_lr'] < 0.65 else "❌ GAGAL"
                 for stock, bdata in d['buy_stocks'].items():
+                    status_info = next((s for s in d.get('buy_status_detail', []) if s['stock'] == stock), {})
                     lr_rows.append({
                         'SID': sid, 'Nama': d['name'], 'Saham Beli': stock,
                         'Lot Beli': int(bdata['lot']), 'Nilai Beli': bdata['value'],
+                        'Available Qty': status_info.get('available_qty', 0),
+                        'Status Margin': status_info.get('status', ''),
                         'Avail Efektif': d['avail_efektif'], 'Ceiling LR': d['ceiling_lr'],
                         'Loan After RP': d['loan_after_rp'], 'Coll After LR': d['coll_after_lr'],
                         'Rasio LR': rasio_val, 'Max LR Final': d['max_lr_final'], 'Status': status_rasio,
@@ -663,8 +691,8 @@ with tab_mnc:
         df_buy_raw = df_buy.copy()
         return df_sell, df_buy, df_buy_raw
 
-    def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
-                         closing_prices, risk_params, df_sell, df_buy):
+   def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
+                         closing_prices, risk_params, df_sell, df_buy, risk_avq):
         op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"available_limit":0,"name":sid,"stocks":{}})
         cl  = cl_data.get(sid, {"available_limit":0,"name":sid})
         loan_ex   = op["loan_existing"]
@@ -737,9 +765,16 @@ with tab_mnc:
         coll_after_rp2, _ = calc_collateral(stocks_after_rp, closing_prices, risk_params)
         loan_after_rp2    = max(loan_ex - total_rp_maks, 0)
 
-        stocks_after_lr = dict(stocks_after_rp)
+        stocks_after_lr   = dict(stocks_after_rp)
+        buy_status_detail = []
         for stock, bdata in buy_stocks.items():
             stocks_after_lr[stock] = stocks_after_lr.get(stock, 0) + bdata['lot']
+            avq    = risk_avq.get(stock, 0.0)
+            status = get_loan_status(avq, bdata['lot'])
+            buy_status_detail.append({
+                'stock': stock, 'lot_beli': bdata['lot'],
+                'available_qty': avq, 'status': status,
+            })
         coll_after_lr, _ = calc_collateral(stocks_after_lr, closing_prices, risk_params)
 
         total_buy_val  = sum(b['value'] for b in buy_stocks.values())
@@ -794,6 +829,8 @@ with tab_mnc:
             "coll_after_rp": coll_after_rp2, "coll_after_lr": coll_after_lr,
             "ceiling_lr": ceiling_lr, "max_lr_63": max_lr_63, "max_lr_65": max_lr_65,
             "max_lr_final": max_lr_final, "avail_efektif": avail_efektif, "total_buy_val": total_buy_val,
+            "max_lr_final": max_lr_final, "avail_efektif": avail_efektif, "total_buy_val": total_buy_val,
+            "buy_status_detail": buy_status_detail,
         }
 
     def lolos_rp(data):
@@ -823,6 +860,8 @@ with tab_mnc:
                     if vdate != today_check:
                         st.warning(f"⚠️ Value Date Credit Limit: **{vdate}** (hari ini: {today_check})")
 
+                risk_avq = st.session_state['shared_risk_avail_qty']
+
                 all_sids = sorted(set(list(op_data.keys()) + list(cl_data.keys()) +
                                       list(margin_buy.keys()) + list(sell_regular.keys())))
 
@@ -830,7 +869,7 @@ with tab_mnc:
                 for sid in all_sids:
                     sid_results[sid] = validate_sid_mnc(
                         sid, op_data, cl_data, sell_regular, margin_buy,
-                        closing_prices, risk_params, df_sell, df_buy)
+                        closing_prices, risk_params, df_sell, df_buy, risk_avq)
 
                 total_lr_all = sum(d['max_lr_final'] for d in sid_results.values() if lolos_lr(d))
                 total_rp_all = sum(d['total_rp_maks'] for d in sid_results.values() if lolos_rp(d))
@@ -896,12 +935,18 @@ with tab_mnc:
                 ok   = lolos_rp(data)
                 icon = "✅" if ok else "❌"
                 if data.get('is_simulated'): icon += " ✏️"
-                with st.expander(f"{icon} {sid} — {data['name']}  |  RP Maks: {fmt_rp(data['total_rp_maks'])}", expanded=not ok):
+                with st.expander(f"{icon} {sid} — {data['name']}  |  Max LR Final: {fmt_rp(data['max_lr_final'])}", expanded=not ok):
                     c1,c2,c3,c4 = st.columns(4)
-                    c1.metric("Loan Existing",  fmt_rp(data['loan_existing']))
-                    c2.metric("Loan After RP",  fmt_rp(data['loan_after_rp']))
-                    c3.metric("Coll After RP",  fmt_rp(data['coll_after_rp']))
-                    c4.metric("RP Maks",        fmt_rp(data['total_rp_maks']))
+                    c1.metric("Loan After RP",   fmt_rp(data['loan_after_rp']))
+                    c2.metric("Avail Efektif",   fmt_rp(data['avail_efektif']))
+                    c3.metric("Ceiling LR",      fmt_rp(data['ceiling_lr']))
+                    c4.metric("Coll After LR",   fmt_rp(data['coll_after_lr']))
+                    if data.get('buy_status_detail'):
+                        df_buy_status = pd.DataFrame(data['buy_status_detail']).rename(columns={
+                            'stock': 'Saham', 'lot_beli': 'Lot Beli',
+                            'available_qty': 'Available Qty', 'status': 'Status Margin'
+                        })
+                        st.dataframe(df_buy_status, use_container_width=True, hide_index=True)
                     if data['rp_detail']:
                         df_rd = pd.DataFrame([{
                             'Saham': r['stock'], 'Lot Jual': int(r['lot_sell']),
