@@ -2,7 +2,8 @@
 Track Portofolio Nasabah EP
 
 Alur pakai harian:
-  1. Upload RiskParameter (txt), Closing Price (xlsx), list_invoice (csv) hari ini.
+  1. Upload RiskParameter (.xls), Closing Price (.xls), list_invoice (.xls) hari ini.
+     (Ketiganya format Excel biner lama / .xls, sesuai file mentah dari sumber data.)
   2. (Opsional) Upload file hasil (template) hari sebelumnya -> histori otomatis disambung.
   3. Cek / edit kolom Tranche (LN) kalau perlu (auto-assign FIFO by default).
   4. Klik "Generate & Download" -> download file Excel baru (1 sheet per client).
@@ -24,9 +25,18 @@ st.caption(
 
 with st.sidebar:
     st.header("1. Upload File Hari Ini")
-    risk_param_file = st.file_uploader("RiskParameter (.txt, pipe-delimited)", type=["txt"])
-    price_file = st.file_uploader("Closing Price (.xlsx)", type=["xlsx"])
-    invoice_file = st.file_uploader("List Invoice (.csv)", type=["csv"])
+    risk_param_file = st.file_uploader(
+        "RiskParameter (.xls)", type=["xls"],
+        help="Kolom: StockCode, StockName, Haircut, AvailableQuantity",
+    )
+    price_file = st.file_uploader(
+        "Closing Price (.xls)", type=["xls"],
+        help="Kolom kunci: no_share, kurs_now",
+    )
+    invoice_file = st.file_uploader(
+        "List Invoice (.xls)", type=["xls"],
+        help="Kolom kunci: dt_inv, no_inv, no_cust, name, bors, no_share, tot_vol, rate, amt_done, dt_due",
+    )
 
     st.header("2. Template Hasil Kemarin (opsional)")
     st.caption("Kosongkan kalau ini hari pertama / client baru.")
@@ -162,6 +172,9 @@ if st.session_state.processed:
 st.divider()
 with st.expander("ℹ️ Catatan & Asumsi"):
     st.markdown("""
+- Ketiga raw data (**RiskParameter**, **Closing Price**, **List Invoice**) adalah file
+  Excel biner lama (`.xls`), dibaca langsung dengan `pandas.read_excel` (butuh package
+  `xlrd` untuk format `.xls`). Template hasil hari sebelumnya tetap `.xlsx`.
 - Sumber transaksi **hanya** dari `list_invoice` (baris PORTOFOLIO/initial holding tidak dipakai).
 - Bunga dihitung flat **9.5% / tahun**, basis 360 hari, day-weighted-balance per tranche
   (berdasarkan DUE DATE).
