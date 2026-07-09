@@ -150,7 +150,55 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     out["RATIO"] = ""
     out["INV_NO"] = df["no_inv"].astype(str).str.strip()
 
-    return out[TEMPLATE_COLUMNS]
+    out = out[TEMPLATE_COLUMNS]
+    return net_daily_transactions(out, hc_map, price_map)
+
+
+def net_daily_transactions(df: pd.DataFrame, hc_map: dict, price_map: dict) -> pd.DataFrame:
+    """Netting posisi per client per saham per hari transaksi.
+    Satu client tidak mungkin punya lebih dari satu baris utk saham yang sama di hari yang
+    sama -- baris-baris di list_invoice adalah rincian per-invoice dari bursa (bisa berkali-kali
+    Buy/Sell saham yang sama dalam sehari), tapi utk keperluan tracking funding/tranche, semua
+    itu harus di-net jadi SATU posisi bersih per (CLIENT_ID, STOCK, TRX_DATE) sebelum masuk ke
+    tahap assign_tranches/FIFO."""
+    if df.empty:
+        return df
+
+    rows = []
+    group_cols = ["CLIENT_ID", "STOCK", "TRX_DATE"]
+    for (cid, stock, trx_date), g in df.groupby(group_cols, sort=False, dropna=False):
+        net_vol = g["VOL"].sum()
+        net_amt = g["AMOUNT_TRX"].sum()
+        hc = hc_map.get(stock, g["HC"].iloc[0])
+        price = price_map.get(stock, g["PRICE"].iloc[0])
+        due_date = g["DUE_DATE"].max()
+        b_s = "B" if net_amt >= 0 else "S"
+        collateral = net_vol * price * (100 - hc) / 100
+        inv_no = "+".join(sorted(g["INV_NO"].astype(str).unique()))
+
+        rows.append({
+            "CLIENT_ID": cid,
+            "NAME": g["NAME"].iloc[0],
+            "B_S": b_s,
+            "TRX_DATE": trx_date,
+            "DUE_DATE": due_date,
+            "ACTIVITY": "TRX",
+            "STOCK": stock,
+            "HC": hc,
+            "VOL": net_vol,
+            "PRICE": price,
+            "COLLATERAL_IDR_HC": collateral,
+            "AMOUNT_TRX": net_amt,
+            "TRANCHE": "",
+            "FUNDING": net_amt,
+            "OUTSTANDING": 0.0,
+            "INTEREST": 0.0,
+            "RATIO": "",
+            "INV_NO": inv_no,
+        })
+
+    out2 = pd.DataFrame(rows)[TEMPLATE_COLUMNS]
+    return out2.sort_values(["TRX_DATE", "DUE_DATE", "CLIENT_ID", "STOCK"]).reset_index(drop=True)
 
 
 def parse_previous_template(file) -> dict[str, pd.DataFrame]:
