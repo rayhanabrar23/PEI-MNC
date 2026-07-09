@@ -1,3 +1,14 @@
+"""
+Track Portofolio Nasabah EP
+
+Alur pakai harian:
+  1. Upload RiskParameter (txt), Closing Price (xlsx), list_invoice (csv) hari ini.
+  2. (Opsional) Upload file hasil (template) hari sebelumnya -> histori otomatis disambung.
+  3. Cek / edit kolom Tranche (LN) kalau perlu (auto-assign FIFO by default).
+  4. Klik "Generate & Download" -> download file Excel baru (1 sheet per client).
+     Simpan file ini, upload lagi besok sebagai "template" bareng raw data baru.
+"""
+
 import streamlit as st
 import pandas as pd
 from datetime import date
@@ -5,7 +16,7 @@ from datetime import date
 import engine
 
 st.set_page_config(page_title="IDX Porto Tracker", layout="wide")
-st.title("📊 IDX Securities Financing — Portfolio Tracker")
+st.title("Track Portofolio Nasabah EP")
 st.caption(
     "Upload raw data harian + template hasil kemarin (opsional) → app hitung ulang "
     "Funding / Outstanding / Interest per client, lalu keluarkan Excel baru untuk di-download."
@@ -86,6 +97,8 @@ if st.session_state.processed:
         preview_df[display_cols],
         column_config={
             "TRANCHE": st.column_config.TextColumn("LN (Tranche)", help="Edit manual kalau perlu"),
+            "TRX_DATE": st.column_config.DateColumn("TRX DATE", format="YYYY-MM-DD"),
+            "DUE_DATE": st.column_config.DateColumn("DUE DATE", format="YYYY-MM-DD"),
         },
         disabled=[c for c in display_cols if c != "TRANCHE"],
         use_container_width=True,
