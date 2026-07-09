@@ -3,9 +3,9 @@ engine.py
 Core logic for IDX Securities Financing Portfolio Tracker.
 
 Pipeline per hari:
-  1. Baca RiskParameter (haircut per saham)
-  2. Baca Closing Price (harga per saham)
-  3. Baca list_invoice (transaksi harian, mentah dari bursa)
+  1. Baca RiskParameter (haircut per saham) - file .xls
+  2. Baca Closing Price (harga per saham) - file .xls
+  3. Baca list_invoice (transaksi harian, mentah dari bursa) - file .xls
   4. Baca template hasil hari sebelumnya (opsional, kosong kalau hari pertama)
   5. Gabungkan transaksi baru ke histori tiap client (append, bukan replace)
   6. Auto-assign Tranche/LN (FIFO: Sell melunasi tranche tertua yang masih outstanding;
@@ -22,6 +22,16 @@ Catatan asumsi penting (didiskusikan & dikonfirmasi dengan user):
     Excel) -> di sini di-auto-assign dengan aturan FIFO, tapi tetap bisa dikoreksi manual di UI.
   - Nilai FUNDING per transaksi = nilai transaksi (amt_done) dari list_invoice, bertanda
     (+) untuk Buy dan (-) untuk Sell.
+
+Catatan format file mentah (dikonfirmasi dari sample riil 08/07/26):
+  - RiskParameter, Closing Price, dan List Invoice SEMUA berupa file Excel biner lama
+    (.xls, "Composite Document File V2"), BUKAN txt pipe-delimited / csv. Ketiganya dibaca
+    dengan pandas.read_excel (butuh package `xlrd` terpasang untuk format .xls lama).
+  - RiskParameter kolom: StockCode, StockName, Haircut, AvailableQuantity.
+  - Closing Price kolom kunci: no_share, kurs_now (ada banyak kolom lain yang diabaikan).
+  - List Invoice kolom kunci: dt_inv, no_inv, no_cust, name, bors, no_share, tot_vol, rate,
+    amt_done, dt_due (ada banyak kolom lain yang diabaikan, mis. SID, KSEI01, npwp, dll).
+  - dt_inv & dt_due berbentuk string "DD/MM/YYYY HH:MM:SS" -> parse dengan dayfirst=True.
 """
 
 from __future__ import annotations
@@ -70,16 +80,22 @@ DISPLAY_HEADERS = {
 # --------------------------------------------------------------------------
 
 def parse_risk_parameter(file) -> dict:
-    """RiskParameter txt, pipe-delimited: StockCode|StockName|Haircut|AvailableQuantity"""
-    df = pd.read_csv(file, sep="|", dtype=str)
+    """RiskParameter: file Excel (.xls) dengan kolom
+    StockCode | StockName | Haircut | AvailableQuantity."""
+    df = pd.read_excel(file, dtype=str)
     df.columns = [c.strip() for c in df.columns]
+    required = {"StockCode", "Haircut"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Kolom wajib hilang di RiskParameter: {sorted(missing)}")
     df["StockCode"] = df["StockCode"].astype(str).str.strip()
     df["Haircut"] = pd.to_numeric(df["Haircut"], errors="coerce").fillna(0)
     return dict(zip(df["StockCode"], df["Haircut"]))
 
 
 def parse_closing_price(file) -> dict:
-    """Closing price xlsx. Kolom kunci: no_share (kode saham), kurs_now (harga)."""
+    """Closing price: file Excel (.xls). Kolom kunci: no_share (kode saham),
+    kurs_now (harga). Kolom lain (descr, isin, dll) diabaikan."""
     df = pd.read_excel(file)
     df.columns = [str(c).strip() for c in df.columns]
     if "no_share" not in df.columns or "kurs_now" not in df.columns:
@@ -92,8 +108,10 @@ def parse_closing_price(file) -> dict:
 
 
 def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
-    """list_invoice csv -> baris transaksi ternormalisasi (kolom internal)."""
-    df = pd.read_csv(file, dtype=str)
+    """list_invoice: file Excel (.xls) -> baris transaksi ternormalisasi (kolom internal).
+    Kolom sumber yang dipakai: dt_inv, no_inv, no_cust, name, bors, no_share, tot_vol,
+    rate, amt_done, dt_due. Kolom lain (SID, KSEI01, npwp, board, dll) diabaikan."""
+    df = pd.read_excel(file, dtype=str)
     df.columns = [c.strip() for c in df.columns]
 
     required = {"dt_inv", "no_cust", "name", "bors", "no_share", "tot_vol",
@@ -106,6 +124,7 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     out["CLIENT_ID"] = df["no_cust"].astype(str).str.strip()
     out["NAME"] = df["name"].astype(str).str.strip()
     out["B_S"] = df["bors"].astype(str).str.strip().str.upper()
+    # dt_inv / dt_due datang sebagai teks "DD/MM/YYYY HH:MM:SS" dari file .xls sumber
     out["TRX_DATE"] = pd.to_datetime(df["dt_inv"], dayfirst=True, errors="coerce")
     out["DUE_DATE"] = pd.to_datetime(df["dt_due"], dayfirst=True, errors="coerce")
     out["ACTIVITY"] = "TRX"
