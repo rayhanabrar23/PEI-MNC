@@ -15,7 +15,7 @@ from datetime import date
 
 import engine
 
-st.set_page_config(page_title="IDX Porto Tracker", layout="wide")
+st.set_page_config(page_title="Track Portofolio Nasabah EP", layout="wide")
 st.title("Track Portofolio Nasabah EP")
 st.caption(
     "Upload raw data harian + template hasil kemarin (opsional) → app hitung ulang "
