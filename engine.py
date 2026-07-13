@@ -18,8 +18,8 @@ DAY_BASIS = 360       # 360 basis hari
 
 TEMPLATE_COLUMNS = [
     "CLIENT_ID", "NAME", "B_S", "TRX_DATE", "DUE_DATE", "MATURITY", "ACTIVITY", "STOCK",
-    "HC", "VOL", "PRICE", "COLLATERAL_IDR_HC", "AMOUNT_TRX",
-    "TRANCHE", "FUNDING", "OUTSTANDING", "INTEREST", "RATIO", "INV_NO",
+    "HC", "VOL", "PRICE", "COLLATERAL_IDR_HC", "AMOUNT_TRX", "FUNDING", "OUTSTANDING", 
+    "TRANCHE", "INTEREST", "RATIO", "INV_NO",
 ]
 
 DISPLAY_HEADERS = {
@@ -304,15 +304,16 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         sheet_name = re.sub(r"[\\/*?:\[\]]", "_", str(client_id))[:31]
         ws = wb.create_sheet(sheet_name)
 
+        # Header Info
         ws.cell(row=1, column=1, value="CLIENT ID").font = BOLD
         ws.cell(row=1, column=2, value=str(client_id))
         ws.cell(row=1, column=4, value="NAME").font = BOLD
         ws.cell(row=1, column=5, value=str(name))
-        
         ws.cell(row=2, column=4, value="As of Date:").font = BOLD
         as_of_cell = ws.cell(row=2, column=5, value=pd.Timestamp(as_of_date).to_pydatetime())
         as_of_cell.number_format = "yyyy-mm-dd"
 
+        # Headers
         headers = [DISPLAY_HEADERS.get(c, c) for c in TEMPLATE_COLUMNS]
         for j, h in enumerate(headers, start=1):
             c = ws.cell(row=4, column=j, value=h)
@@ -325,83 +326,35 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         for idx, row in df.iterrows():
             r = start_row + idx
             
+            # Kolom 1-13 (Sama)
             ws.cell(row=r, column=1, value=row["CLIENT_ID"]).border = BORDER
             ws.cell(row=r, column=2, value=row["NAME"]).border = BORDER
             ws.cell(row=r, column=3, value=row["B_S"]).border = BORDER
-            
-            c_trx = ws.cell(row=r, column=4, value=pd.Timestamp(row["TRX_DATE"]).to_pydatetime() if pd.notna(row["TRX_DATE"]) else None)
-            c_trx.number_format = "yyyy-mm-dd"
-            c_trx.border = BORDER
-            
-            c_due = ws.cell(row=r, column=5, value=pd.Timestamp(row["DUE_DATE"]).to_pydatetime() if pd.notna(row["DUE_DATE"]) else None)
-            c_due.number_format = "yyyy-mm-dd"
-            c_due.border = BORDER
-
-            formula_maturity = f'=IF(C{r}="B",IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))>6,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))-1,IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))<2,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))+1,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))),"")'
-            c_mat = ws.cell(row=r, column=6, value=formula_maturity)
-            c_mat.number_format = "yyyy-mm-dd"
-            c_mat.border = BORDER
-
+            ws.cell(row=r, column=4, value=pd.Timestamp(row["TRX_DATE"]).to_pydatetime() if pd.notna(row["TRX_DATE"]) else None).number_format = "yyyy-mm-dd"
+            ws.cell(row=r, column=5, value=pd.Timestamp(row["DUE_DATE"]).to_pydatetime() if pd.notna(row["DUE_DATE"]) else None).number_format = "yyyy-mm-dd"
+            ws.cell(row=r, column=6, value=f'=IF(C{r}="B",IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))>6,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))-1,IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))<2,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))+1,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))),"")')
             ws.cell(row=r, column=7, value=row["ACTIVITY"]).border = BORDER
             ws.cell(row=r, column=8, value=row["STOCK"]).border = BORDER
-            
-            c_hc = ws.cell(row=r, column=9, value=row["HC"])
-            c_hc.number_format = "#,##0.00"
-            c_hc.border = BORDER
-            
-            c_vol = ws.cell(row=r, column=10, value=row["VOL"])
-            c_vol.number_format = "#,##0"
-            c_vol.border = BORDER
-            
-            c_prc = ws.cell(row=r, column=11, value=row["PRICE"])
-            c_prc.number_format = "#,##0"
-            c_prc.border = BORDER
-
+            ws.cell(row=r, column=9, value=row["HC"]).number_format = "#,##0.00"
+            ws.cell(row=r, column=10, value=row["VOL"]).number_format = "#,##0"
+            ws.cell(row=r, column=11, value=row["PRICE"]).number_format = "#,##0"
             ws.cell(row=r, column=12, value=f"=J{r}*K{r}*(100-I{r})/100").number_format = "#,##0"
-            ws.cell(row=r, column=12).border = BORDER
+            ws.cell(row=r, column=13, value=row["AMOUNT_TRX"]).number_format = "#,##0"
 
-            c_amtt = ws.cell(row=r, column=13, value=row["AMOUNT_TRX"])
-            c_amtt.number_format = "#,##0"
-            c_amtt.border = BORDER
+            # 14. FUNDING (Kolom N / 14)
+            f_fund = f'=IF(P{r}="","",IF(OR(C{r}="B",C{r}="SW",C{r}="SD"),M{r},IF(ABS(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r})))<SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),IF(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))>0,SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),-SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r}))))'
+            ws.cell(row=r, column=14, value=f_fund if idx > 0 else f'=IF(P{r}="","",M{r})').number_format = "#,##0"
+            
+            # 15. OUTSTANDING (Kolom O / 15)
+            ws.cell(row=r, column=15, value=f'=SUMIFS($N$5:N{r},$P$5:P{r},P{r})').number_format = "#,##0"
+            
+            # 16. LN / TRANCHE (Kolom P / 16) - SUDAH DIPINDAH
+            ws.cell(row=r, column=16, value=row["TRANCHE"]).border = BORDER
+            
+            # 17. INTEREST (Kolom Q / 17)
+            ws.cell(row=r, column=17, value=f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($R$4:R{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),P{r}=P{r-1}),IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),-SUMIFS($R$4:R{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P{r+1},0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))').number_format = "#,##0"
 
-            ws.cell(row=r, column=14, value=row["TRANCHE"]).border = BORDER
-
-            formula_funding = (
-                f'=IF(N{r}="","",IF(OR(C{r}="B",C{r}="SW",C{r}="SD"),M{r},'
-                f'IF(ABS(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r})))<'
-                f'SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+SUMIFS($P$5:P{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+'
-                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
-                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),'
-                f'IF(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
-                f'SUMIFS($P$5:P{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+'
-                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
-                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))>0,'
-                f'SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
-                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
-                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),'
-                f'SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
-                f'SUMIFS($P$5:P{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+'
-                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
-                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),'
-                f'-SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r}))))'
-            )
-            if idx == 0:
-                formula_funding = f'=IF(N{r}="","",M{r})'
-
-            ws.cell(row=r, column=15, value=formula_funding).number_format = "#,##0"
-            ws.cell(row=r, column=15).border = BORDER
-
-            ws.cell(row=r, column=16, value=f'=SUMIFS($O$5:O{r},$N$5:N{r},N{r})').number_format = "#,##0"
-            ws.cell(row=r, column=16).border = BORDER
-
-            formula_interest = (
-                f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$N$4:N{r-1},N{r})>ABS(O{r}),N{r}=N{r-1}),'
-                f'IFERROR((INDEX($E{r+1}:$E$500,MATCH(N{r},$N{r+1}:$N$500,0),1)-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360,($E$2-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360),'
-                f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$N$4:N{r-1},N{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(N{r},$N{r+1}:$N$500,0),1)-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360,($E$2-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360)))'
-            )
-            ws.cell(row=r, column=17, value=formula_interest).number_format = "#,##0"
-            ws.cell(row=r, column=17).border = BORDER
-
+            # 18-19. RATIO & INV_NO
             ws.cell(row=r, column=18, value=row["RATIO"]).border = BORDER
             ws.cell(row=r, column=19, value=row["INV_NO"]).border = BORDER
 
