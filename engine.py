@@ -269,7 +269,6 @@ def process_client(df: pd.DataFrame, as_of_date) -> pd.DataFrame:
     return df.sort_values(["TRX_DATE", "DUE_DATE", "INV_NO"]).reset_index(drop=True)
 
 def build_recap(df: pd.DataFrame, hc_map: dict, price_map: dict):
-    # Fungsi ini dipanggil oleh Streamlit UI untuk menampilkan ringkasan
     if df.empty:
         return pd.DataFrame(), pd.DataFrame(), 0.0, 0.0, 0.0
         
@@ -409,71 +408,96 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         end_data_row = start_row + len(df) - 1
 
         # =========================================================================
-        # ---- REKAPITULASI BARIS BAWAH (LAST LOAN & BREAKDOWN) ----
+        # ---- REKAPITULASI BARIS BAWAH: PENEMPATAN SEJAJAR KOLOM ATASNYA ----
         # =========================================================================
         r = end_data_row + 2
         
-        # 1. Baris LAST LOAN
-        ws.cell(row=r, column=1, value=str(client_id)).border = BORDER
-        ws.cell(row=r, column=2, value=str(name)).border = BORDER
-        ws.cell(row=r, column=7, value="LAST LOAN").font = BOLD
-        ws.cell(row=r, column=7).border = BORDER
-
+        # 1. Baris LAST LOAN (Diposisikan sesuai struktur kolom tabel)
         formula_last_due = f'=IF($E$2<=LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),$E$2)'
         c_ldue = ws.cell(row=r, column=5, value=formula_last_due)
         c_ldue.number_format = "yyyy-mm-dd"
         c_ldue.font = BOLD
         c_ldue.border = BORDER
 
-        ws.cell(row=r, column=10, value=f"=SUM(J5:J{end_data_row})").number_format = "#,##0"
-        ws.cell(row=r, column=12, value=f"=SUM(L5:L{end_data_row})").number_format = "#,##0"
-        ws.cell(row=r, column=15, value=f"=SUM(O5:O{end_data_row})").number_format = "#,##0"
-        ws.cell(row=r, column=17, value=f"=SUM(Q5:Q{end_data_row})").number_format = "#,##0"
-        ws.cell(row=r, column=18, value=f"=IF(L{r}=0,0,(O{r}+Q{r})/L{r})").number_format = "0.00%"
-        
-        for col_idx in [10, 12, 15, 17, 18]:
-            ws.cell(row=r, column=col_idx).font = BOLD
-            ws.cell(row=r, column=col_idx).border = BORDER
-            
-        for col_idx in [3, 4, 6, 8, 9, 11, 13, 14, 16, 19]:
-            ws.cell(row=r, column=col_idx, value="").border = BORDER
+        ws.cell(row=r, column=6, value=str(client_id)).font = BOLD
+        ws.cell(row=r, column=6).border = BORDER
 
-        # 2. Tabel Breakdown Funding
-        tranche_df = df.groupby("TRANCHE")["AMOUNT_TRX"].sum().reset_index()
+        ws.cell(row=r, column=7, value=str(name)).font = BOLD
+        ws.cell(row=r, column=7).border = BORDER
+
+        ws.cell(row=r, column=10, value=f"=SUM(J5:J{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=10).font = BOLD
+        ws.cell(row=r, column=10).border = BORDER
         
-        r += 3
-        ws.cell(row=r, column=1, value="PELUNASAN FUNDING").font = BOLD
-        r += 1
-        ws.cell(row=r, column=1, value="TRANCHE").font = BOLD
-        ws.cell(row=r, column=2, value="TOTAL FUNDING").font = BOLD
+        ws.cell(row=r, column=12, value=f"=SUM(L5:L{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=12).font = BOLD
+        ws.cell(row=r, column=12).border = BORDER
         
-        for _, t_row in tranche_df.iterrows():
-            if str(t_row["TRANCHE"]).strip() and not pd.isna(t_row["TRANCHE"]):
-                r += 1
-                ws.cell(row=r, column=1, value=t_row["TRANCHE"])
-                ws.cell(row=r, column=2, value=t_row["AMOUNT_TRX"]).number_format = "#,##0"
-                
-        # 3. Tabel Breakdown Collateral Saham
+        ws.cell(row=r, column=15, value=f"=SUM(O5:O{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=15).font = BOLD
+        ws.cell(row=r, column=15).border = BORDER
+        
+        ws.cell(row=r, column=16, value="LAST LOAN").font = BOLD
+        ws.cell(row=r, column=16).border = BORDER
+
+        ws.cell(row=r, column=17, value=f"=SUM(Q5:Q{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=17).font = BOLD
+        ws.cell(row=r, column=17).border = BORDER
+        
+        ws.cell(row=r, column=18, value=f"=IF(L{r}=0,0,(O{r}+Q{r})/L{r})").number_format = "0.00%"
+        ws.cell(row=r, column=18).font = BOLD
+        ws.cell(row=r, column=18).border = BORDER
+
+        # 2. Tabel Breakdown Funding dan Saham (Disusun berdampingan sejajar kolom)
+        r_recap = r + 3
+        
+        # Judul Tabel
+        ws.cell(row=r_recap, column=8, value="COLLATERAL SAHAM (posisi saat ini)").font = BOLD
+        ws.cell(row=r_recap, column=14, value="PELUNASAN FUNDING").font = BOLD
+        
+        # Sub-Headers Tabel
+        r_recap += 1
+        headers_saham = [(8, "STOCK"), (9, "HC"), (10, "VOL"), (11, "PRICE"), (12, "COLLATERAL (IDR-HC)")]
+        for col_idx, val in headers_saham:
+            c = ws.cell(row=r_recap, column=col_idx, value=val)
+            c.font = BOLD
+            c.border = BORDER
+
+        headers_funding = [(14, "TRANCHE"), (15, "TOTAL FUNDING")]
+        for col_idx, val in headers_funding:
+            c = ws.cell(row=r_recap, column=col_idx, value=val)
+            c.font = BOLD
+            c.border = BORDER
+
+        # Start Isi Data
+        r_data_start = r_recap + 1
+        
+        # - Cetak Baris Saham
+        r_saham = r_data_start
         stock_df = df.groupby("STOCK").agg({"HC": "first", "VOL": "sum", "PRICE": "first"}).reset_index()
         stock_df["COLLATERAL_IDR"] = stock_df["VOL"] * stock_df["PRICE"] * (100 - stock_df["HC"]) / 100
-        
-        r += 3
-        ws.cell(row=r, column=1, value="COLLATERAL SAHAM (posisi saat ini)").font = BOLD
-        r += 1
-        ws.cell(row=r, column=1, value="STOCK").font = BOLD
-        ws.cell(row=r, column=2, value="HC").font = BOLD
-        ws.cell(row=r, column=3, value="VOL").font = BOLD
-        ws.cell(row=r, column=4, value="PRICE").font = BOLD
-        ws.cell(row=r, column=5, value="COLLATERAL (IDR-HC)").font = BOLD
-        
         for _, s_row in stock_df.iterrows():
             if round(s_row["VOL"]) != 0:
-                r += 1
-                ws.cell(row=r, column=1, value=s_row["STOCK"])
-                ws.cell(row=r, column=2, value=s_row["HC"] / 100).number_format = "0.0%"
-                ws.cell(row=r, column=3, value=s_row["VOL"]).number_format = "#,##0"
-                ws.cell(row=r, column=4, value=s_row["PRICE"]).number_format = "#,##0"
-                ws.cell(row=r, column=5, value=s_row["COLLATERAL_IDR"]).number_format = "#,##0"
+                ws.cell(row=r_saham, column=8, value=s_row["STOCK"]).border = BORDER
+                ws.cell(row=r_saham, column=9, value=s_row["HC"] / 100).number_format = "0.0%"
+                ws.cell(row=r_saham, column=9).border = BORDER
+                ws.cell(row=r_saham, column=10, value=s_row["VOL"]).number_format = "#,##0"
+                ws.cell(row=r_saham, column=10).border = BORDER
+                ws.cell(row=r_saham, column=11, value=s_row["PRICE"]).number_format = "#,##0"
+                ws.cell(row=r_saham, column=11).border = BORDER
+                ws.cell(row=r_saham, column=12, value=s_row["COLLATERAL_IDR"]).number_format = "#,##0"
+                ws.cell(row=r_saham, column=12).border = BORDER
+                r_saham += 1
+
+        # - Cetak Baris Tranche / Pelunasan
+        r_tranche = r_data_start
+        tranche_df = df.groupby("TRANCHE")["AMOUNT_TRX"].sum().reset_index()
+        for _, t_row in tranche_df.iterrows():
+            if str(t_row["TRANCHE"]).strip() and not pd.isna(t_row["TRANCHE"]):
+                ws.cell(row=r_tranche, column=14, value=t_row["TRANCHE"]).border = BORDER
+                ws.cell(row=r_tranche, column=15, value=t_row["AMOUNT_TRX"]).number_format = "#,##0"
+                ws.cell(row=r_tranche, column=15).border = BORDER
+                r_tranche += 1
 
         # Auto-adjust column width
         for col_cells in ws.columns:
