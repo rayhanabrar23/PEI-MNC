@@ -342,18 +342,43 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             ws.cell(row=r, column=13, value=row["AMOUNT_TRX"]).number_format = "#,##0"
 
             # 14. FUNDING (Kolom N / 14)
-            f_fund = f'=IF(P{r}="","",IF(OR(C{r}="B",C{r}="SW",C{r}="SD"),M{r},IF(ABS(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r})))<SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),IF(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))>0,SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),-SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r}))))'
+            # Rumus disesuaikan: P sekarang adalah kolom Tranche, N adalah kolom Funding
+            f_fund = (
+                f'=IF(P{r}="","",IF(OR(C{r}="B",C{r}="SW",C{r}="SD"),M{r},'
+                f'IF(ABS(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r})))<'
+                f'SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+'
+                f'ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),'
+                f'IF(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
+                f'SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+'
+                f'ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))>0,'
+                f'SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
+                f'ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),'
+                f'SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
+                f'SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r})+'
+                f'ABS(SUM(SUMIFS($N$5:N{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),'
+                f'-SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r}))))'
+            )
             ws.cell(row=r, column=14, value=f_fund if idx > 0 else f'=IF(P{r}="","",M{r})').number_format = "#,##0"
             
             # 15. OUTSTANDING (Kolom O / 15)
+            # outstanding sekarang adalah akumulasi Funding (kolom N) berdasarkan Tranche (kolom P)
             ws.cell(row=r, column=15, value=f'=SUMIFS($N$5:N{r},$P$5:P{r},P{r})').number_format = "#,##0"
             
-            # 16. LN / TRANCHE (Kolom P / 16) - SUDAH DIPINDAH
+            # 16. LN / TRANCHE (Kolom P / 16)
             ws.cell(row=r, column=16, value=row["TRANCHE"]).border = BORDER
             
             # 17. INTEREST (Kolom Q / 17)
-            ws.cell(row=r, column=17, value=f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($R$4:R{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),P{r}=P{r-1}),IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),-SUMIFS($R$4:R{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P{r+1},0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))').number_format = "#,##0"
-
+            formula_interest = (
+                f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),P{r}=P{r-1}),'
+                f'IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),'
+                f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))'
+            )
+            ws.cell(row=r, column=17, value=formula_interest).number_format = "#,##0"
+            
             # 18-19. RATIO & INV_NO
             ws.cell(row=r, column=18, value=row["RATIO"]).border = BORDER
             ws.cell(row=r, column=19, value=row["INV_NO"]).border = BORDER
