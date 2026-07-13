@@ -94,21 +94,30 @@ if st.session_state.processed:
     client_ids = list(merged_by_client.keys())
     selected_client = st.selectbox("Pilih client untuk review", client_ids)
 
-    raw_df = merged_by_client[selected_client]
-    # tampilkan hasil auto-assign dulu supaya user tahu current state
+   raw_df = merged_by_client[selected_client]
     preview_df = engine.assign_tranches(raw_df.copy())
+    
+    # KUNCI PERBAIKAN: Pastikan kolom MATURITY ada di DataFrame agar tidak KeyError
+    if "MATURITY" not in preview_df.columns:
+        preview_df["MATURITY"] = ""  # Isi kosong dulu karena nanti diisi rumus otomatis oleh Excel
+        
+    # Tambahkan MATURITY ke dalam list display
     display_cols = ["TRX_DATE", "DUE_DATE", "MATURITY", "B_S", "STOCK", "VOL", "PRICE",
                     "AMOUNT_TRX", "TRANCHE", "INV_NO"]
     
+    # Memastikan tidak ada kolom lain di display_cols yang typo/hilang
+    # (Hanya mengambil kolom yang benar-benar ada di preview_df)
+    available_cols = [c for c in display_cols if c in preview_df.columns]
+    
     edited = st.data_editor(
-        preview_df[display_cols],
+        preview_df[available_cols],  # Menggunakan kolom yang sudah divalidasi aman
         column_config={
             "TRANCHE": st.column_config.TextColumn("LN (Tranche)", help="Edit manual kalo perlu"),
             "TRX_DATE": st.column_config.DateColumn("TRX DATE", format="YYYY-MM-DD"),
             "DUE_DATE": st.column_config.DateColumn("DUE DATE", format="YYYY-MM-DD"),
             "MATURITY": st.column_config.TextColumn("MATURITY (Auto Excel)", disabled=True),
         },
-        disabled=[c for c in display_cols if c != "TRANCHE"],
+        disabled=[c for c in available_cols if c != "TRANCHE"],
         use_container_width=True,
         hide_index=True,
         key=f"editor_{selected_client}",
