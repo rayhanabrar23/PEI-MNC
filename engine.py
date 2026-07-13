@@ -441,7 +441,7 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             c.font = BOLD
             c.border = BORDER
 
-        headers_funding = [(14, "TRANCHE"), (15, "TOTAL FUNDING")]
+        headers_funding = [(14, "FUNDING"), (15, "TRANCHE"), (16, "INTEREST"), (17, "DUE DATE")]
         for col_idx, val in headers_funding:
             c = ws.cell(row=r_recap, column=col_idx, value=val)
             c.font = BOLD
@@ -467,15 +467,49 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
                 ws.cell(row=r_saham, column=12).border = BORDER
                 r_saham += 1
 
-        # - Cetak Baris Tranche / Pelunasan
+        # - Baris Total PORTOFOLIO (sum Collateral IDR-HC)
+        last_saham_row = r_saham - 1 if r_saham > r_data_start else r_data_start
+        ws.merge_cells(start_row=r_saham, start_column=8, end_row=r_saham, end_column=11)
+        c_port = ws.cell(row=r_saham, column=8, value="PORTOFOLIO")
+        c_port.font = BOLD
+        c_port.alignment = Alignment(horizontal="center")
+        c_port.border = BORDER
+        for col in (9, 10, 11):
+            ws.cell(row=r_saham, column=col).border = BORDER
+        c_port_val = ws.cell(row=r_saham, column=12, value=f"=SUM(L{r_data_start}:L{last_saham_row})")
+        c_port_val.number_format = "#,##0"
+        c_port_val.font = BOLD
+        c_port_val.border = BORDER
+
+        # - Cetak Baris Tranche / Pelunasan Funding (FUNDING | TRANCHE | INTEREST | DUE DATE)
         r_tranche = r_data_start
-        tranche_df = df.groupby("TRANCHE")["AMOUNT_TRX"].sum().reset_index()
-        for _, t_row in tranche_df.iterrows():
-            if str(t_row["TRANCHE"]).strip() and not pd.isna(t_row["TRANCHE"]):
-                ws.cell(row=r_tranche, column=14, value=t_row["TRANCHE"]).border = BORDER
-                ws.cell(row=r_tranche, column=15, value=t_row["AMOUNT_TRX"]).number_format = "#,##0"
-                ws.cell(row=r_tranche, column=15).border = BORDER
-                r_tranche += 1
+        tranches = sorted({str(t).strip() for t in df["TRANCHE"] if str(t).strip() and not pd.isna(t)})
+        for t in tranches:
+            f_fund_sum = f'=SUMIFS($N${start_row}:N{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
+            f_int_sum = f'=SUMIFS($Q${start_row}:Q{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
+            f_due = f'=MAXIFS($E${start_row}:E{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
+
+            ws.cell(row=r_tranche, column=14, value=f_fund_sum).number_format = "#,##0"
+            ws.cell(row=r_tranche, column=14).border = BORDER
+            ws.cell(row=r_tranche, column=15, value=t).border = BORDER
+            ws.cell(row=r_tranche, column=16, value=f_int_sum).number_format = "#,##0"
+            ws.cell(row=r_tranche, column=16).border = BORDER
+            c_due = ws.cell(row=r_tranche, column=17, value=f_due)
+            c_due.number_format = "d-mmm"
+            c_due.border = BORDER
+            r_tranche += 1
+
+        # - Baris Total Pelunasan Funding
+        last_tranche_row = r_tranche - 1 if r_tranche > r_data_start else r_data_start
+        r_tranche += 1
+        c_tot_fund = ws.cell(row=r_tranche, column=14, value=f"=SUM(N{r_data_start}:N{last_tranche_row})")
+        c_tot_fund.number_format = "#,##0"
+        c_tot_fund.font = BOLD
+        c_tot_fund.border = BORDER
+        c_tot_int = ws.cell(row=r_tranche, column=16, value=f"=SUM(P{r_data_start}:P{last_tranche_row})")
+        c_tot_int.number_format = "#,##0"
+        c_tot_int.font = BOLD
+        c_tot_int.border = BORDER
 
         # Auto-adjust column width
         for col_cells in ws.columns:
