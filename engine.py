@@ -365,8 +365,32 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
 
             ws.cell(row=r, column=14, value=row["TRANCHE"]).border = BORDER
 
-            # 3. RUMUS FUNDING (Kolom O / 15) -> = AMOUNT TRX
-            ws.cell(row=r, column=15, value=f"=M{r}").number_format = "#,##0"
+            # 3. RUMUS FUNDING (Kolom O / 15) - Menggunakan rumus FIFO matching dinamis
+            formula_funding = (
+                f'=IF(N{r}="","",IF(OR(C{r}="B",C{r}="SW",C{r}="SD"),M{r},'
+                f'IF(ABS(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r})))<'
+                f'SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+SUMIFS($P$5:P{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),'
+                f'IF(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
+                f'SUMIFS($P$5:P{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))>0,'
+                f'SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r}))),'
+                f'SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r}))+'
+                f'SUMIFS($P$5:P{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+'
+                f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))+'
+                f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),'
+                f'-SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r}))))'
+            )
+            
+            # Proteksi khusus baris pertama data (Baris 5) agar tidak error #REF! karena memanggil baris r-1
+            if idx == 0:
+                formula_funding = f'=IF(N{r}="","",M{r})'
+
+            ws.cell(row=r, column=15, value=formula_funding).number_format = "#,##0"
             ws.cell(row=r, column=15).border = BORDER
 
             # 4. RUMUS OUTSTANDING (Kolom P / 16) -> Saldo kumulatif per Tranche
