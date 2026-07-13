@@ -94,7 +94,7 @@ if st.session_state.processed:
     client_ids = list(merged_by_client.keys())
     selected_client = st.selectbox("Pilih client untuk review", client_ids)
 
-   raw_df = merged_by_client[selected_client]
+    raw_df = merged_by_client[selected_client]
     preview_df = engine.assign_tranches(raw_df.copy())
     
     # KUNCI PERBAIKAN: Pastikan kolom MATURITY ada di DataFrame agar tidak KeyError
