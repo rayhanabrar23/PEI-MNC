@@ -397,22 +397,25 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             ws.cell(row=r, column=16, value=f'=SUMIFS($O$5:O{r},$N$5:N{r},N{r})').number_format = "#,##0"
             ws.cell(row=r, column=16).border = BORDER
 
-            # 5. RUMUS INTEREST DINAMIS (Kolom Q / 17) -> Menggunakan rumus modifikasi user, disesuaikan koordinat kolom
-            # As of Date ada di $E$2. Rate diganti 9.5%.
+            # 5. RUMUS INTEREST DINAMIS (Kolom Q / 17)
+            # Disesuaikan dari rumus asli Anda agar cocok dengan koordinat kolom engine Python:
+            # - Tranche dipindahkan ke kolom N
+            # - Funding/Amount dipindahkan ke kolom O / M
+            # - As of Date dipindahkan ke $E$2
+            # - Bunga disesuaikan menjadi 9.5%
+            
             formula_interest = (
                 f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($Q$5:Q{r-1},$A$5:A{r-1},A{r},$N$5:N{r-1},N{r})>ABS(O{r}),N{r}=N{r-1}),'
                 f'IFERROR((INDEX($E{r+1}:$E$500,MATCH(N{r},$N{r+1}:$N$500,0),1)-E{r})*SUMIFS($O$5:O{r},$A$5:$A{r},A{r},$N$5:$N{r},N{r})*9.5%/360,($E$2-E{r})*SUMIFS($O$5:O{r},$A$5:$A{r},A{r},$N$5:$N{r},N{r})*9.5%/360),'
                 f'-SUMIFS($Q$5:Q{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(N{r},$N{r+1}:$N$500,0),1)-E{r})*SUMIFS($O$5:O{r},$A$5:$A{r},A{r},$N$5:$N{r},N{r})*9.5%/360,($E$2-E{r})*SUMIFS($O$5:O{r},$A$5:$A{r},A{r},$N$5:$N{r},N{r})*9.5%/360)))'
             )
-            # Baris pertama bypass rekursif ringkas
+            
+            # Jaring pengaman khusus baris pertama data (Baris 5) agar tidak error #REF! / circular
             if idx == 0:
                 formula_interest = f'=IF($E$2-E{r}<0,0,($E$2-E{r})*O{r}*9.5%/360)'
                 
             ws.cell(row=r, column=17, value=formula_interest).number_format = "#,##0"
             ws.cell(row=r, column=17).border = BORDER
-
-            ws.cell(row=r, column=18, value=row["RATIO"]).border = BORDER
-            ws.cell(row=r, column=19, value=row["INV_NO"]).border = BORDER
 
         end_data_row = start_row + len(df) - 1
 
