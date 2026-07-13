@@ -270,15 +270,88 @@ def client_id_from_sheet(sheet_name: str, cdf: pd.DataFrame) -> str:
 
 
 # --------------------------------------------------------------------------
-# 2. MERGE (histori lama + transaksi baru), dedup by INV_NO
+# 2. NETTING (per client + saham + tanggal -> 1 baris hasil akhir bersih)
 # --------------------------------------------------------------------------
+
+def net_transactions(df: pd.DataFrame) -> pd.DataFrame:
+    """Netting harian: semua transaksi Buy & Sell untuk kombinasi
+    (client, saham, tanggal) yang sama digabung jadi SATU baris posisi akhir.
+    - Kalau hasil akhirnya net Buy -> 1 baris B dengan volume net-nya.
+    - Kalau hasil akhirnya net Sell -> 1 baris S dengan volume net-nya.
+    - Kalau net = 0 (saling menutup persis) -> baris tidak muncul sama sekali.
+    Jadi tidak akan ada 1 saham tercatat 2x di hari yang sama untuk client yang sama.
+    """
+    if df.empty:
+        return df
+
+    out_rows = []
+    for (cid, stock, trx_date), g in df.groupby(["CLIENT_ID", "STOCK", "TRX_DATE"], dropna=False):
+        net_vol = g["VOL"].sum()
+        if round(net_vol) == 0:
+            continue  # net habis, tidak dicatat
+        net_amt = g["AMOUNT_TRX"].sum()
+        b_s = "B" if net_vol > 0 else "S"
+
+        due_dates = g["DUE_DATE"].dropna()
+        due_date = due_dates.mode().iloc[0] if not due_dates.empty else pd.NaT
+
+        hc = g["HC"].iloc[0]
+        price = g["PRICE"].iloc[0]
+        collateral = net_vol * price * (100 - hc) / 100
+        inv_no = ",".join(sorted(set(g["INV_NO"].astype(str))))
+
+        out_rows.append({
+            "CLIENT_ID": cid,
+            "NAME": g["NAME"].iloc[0],
+            "B_S": b_s,
+            "TRX_DATE": trx_date,
+            "DUE_DATE": due_date,
+            "ACTIVITY": "TRX",
+            "STOCK": stock,
+            "HC": hc,
+            "VOL": net_vol,
+            "PRICE": price,
+            "COLLATERAL_IDR_HC": collateral,
+            "AMOUNT_TRX": net_amt,
+            "TRANCHE": "",
+            "FUNDING": net_amt,
+            "OUTSTANDING": 0.0,
+            "INTEREST": 0.0,
+            "RATIO": "",
+            "INV_NO": inv_no,
+        })
+
+    if not out_rows:
+        return pd.DataFrame(columns=TEMPLATE_COLUMNS)
+
+    result = pd.DataFrame(out_rows)
+    return result.sort_values(["TRX_DATE", "CLIENT_ID", "STOCK"]).reset_index(drop=True)[TEMPLATE_COLUMNS]
+
+
+# --------------------------------------------------------------------------
+# 3. MERGE (histori lama + transaksi baru), dedup by INV_NO
+# --------------------------------------------------------------------------
+
+def _inv_no_set(inv_no) -> set:
+    """Satu baris (setelah netting) bisa mewakili beberapa no invoice
+    yang digabung jadi string 'inv1,inv2,inv3'. Pecah jadi set untuk dedup."""
+    if not inv_no or (isinstance(inv_no, float) and pd.isna(inv_no)):
+        return set()
+    return set(str(inv_no).split(","))
+
 
 def merge_client_history(old_df: pd.DataFrame | None, new_df: pd.DataFrame) -> pd.DataFrame:
     if old_df is None or old_df.empty:
         combined = new_df.copy()
     else:
-        existing_inv = set(old_df["INV_NO"].astype(str))
-        add_df = new_df[~new_df["INV_NO"].astype(str).isin(existing_inv)]
+        existing_invs: set = set()
+        for s in old_df["INV_NO"].astype(str):
+            existing_invs |= _inv_no_set(s)
+
+        def is_new(inv_no):
+            return len(_inv_no_set(inv_no) & existing_invs) == 0
+
+        add_df = new_df[new_df["INV_NO"].apply(is_new)]
         combined = pd.concat([old_df, add_df], ignore_index=True)
     combined = combined.sort_values(["TRX_DATE", "DUE_DATE", "INV_NO"]).reset_index(drop=True)
     return combined
