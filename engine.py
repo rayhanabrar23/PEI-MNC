@@ -323,6 +323,8 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             c.alignment = Alignment(horizontal="center")
 
         start_row = 5
+        end_data_row = start_row + len(df) - 1
+        summary_row = end_data_row + 2  # baris "LAST LOAN" (kolom E berisi tanggal cut-off efektif)
         for idx, row in df.iterrows():
             r = start_row + idx
             
@@ -373,9 +375,9 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             
             # 17. INTEREST (Kolom Q / 17)
             formula_interest = (
-                f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),P{r}=P{r-1}),'
-                f'IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),'
-                f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E$2-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))'
+                f'=IF($E${summary_row}-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),M{r}=N{r}),'
+                f'IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),'
+                f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(P{r},$P{r+1}:$P$500,0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))'
             )
             ws.cell(row=r, column=17, value=formula_interest).number_format = "#,##0"
             
@@ -383,12 +385,10 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             ws.cell(row=r, column=18, value=row["RATIO"]).border = BORDER
             ws.cell(row=r, column=19, value=row["INV_NO"]).border = BORDER
 
-        end_data_row = start_row + len(df) - 1
-
         # =========================================================================
         # ---- REKAPITULASI BARIS BAWAH: PENEMPATAN SEJAJAR KOLOM ATASNYA ----
         # =========================================================================
-        r = end_data_row + 2
+        r = summary_row
         
         # 1. Baris LAST LOAN (Diposisikan sesuai struktur kolom tabel)
         formula_last_due = f'=IF($E$2<=LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),$E$2)'
