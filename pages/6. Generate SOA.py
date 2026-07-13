@@ -12,6 +12,9 @@ Alur pakai harian:
 import streamlit as st
 import pandas as pd
 from datetime import date
+import engine
+import importlib             # <--- TAMBAHKAN BARIS INI
+importlib.reload(engine)     # <--- TAMBAHKAN BARIS INI
 
 import engine
 
