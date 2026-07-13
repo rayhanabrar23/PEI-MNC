@@ -3,9 +3,9 @@ engine.py
 Core logic for IDX Securities Financing Portfolio Tracker.
 
 Pipeline per hari:
-  1. Baca RiskParameter (haircut per saham) - file .xls
-  2. Baca Closing Price (harga per saham) - file .xls
-  3. Baca list_invoice (transaksi harian, mentah dari bursa) - file .xls
+  1. Baca RiskParameter (haircut per saham)
+  2. Baca Closing Price (harga per saham)
+  3. Baca list_invoice (transaksi harian, mentah dari bursa)
   4. Baca template hasil hari sebelumnya (opsional, kosong kalau hari pertama)
   5. Gabungkan transaksi baru ke histori tiap client (append, bukan replace)
   6. Auto-assign Tranche/LN (FIFO: Sell melunasi tranche tertua yang masih outstanding;
@@ -22,16 +22,6 @@ Catatan asumsi penting (didiskusikan & dikonfirmasi dengan user):
     Excel) -> di sini di-auto-assign dengan aturan FIFO, tapi tetap bisa dikoreksi manual di UI.
   - Nilai FUNDING per transaksi = nilai transaksi (amt_done) dari list_invoice, bertanda
     (+) untuk Buy dan (-) untuk Sell.
-
-Catatan format file mentah (dikonfirmasi dari sample riil 08/07/26):
-  - RiskParameter, Closing Price, dan List Invoice SEMUA berupa file Excel biner lama
-    (.xls, "Composite Document File V2"), BUKAN txt pipe-delimited / csv. Ketiganya dibaca
-    dengan pandas.read_excel (butuh package `xlrd` terpasang untuk format .xls lama).
-  - RiskParameter kolom: StockCode, StockName, Haircut, AvailableQuantity.
-  - Closing Price kolom kunci: no_share, kurs_now (ada banyak kolom lain yang diabaikan).
-  - List Invoice kolom kunci: dt_inv, no_inv, no_cust, name, bors, no_share, tot_vol, rate,
-    amt_done, dt_due (ada banyak kolom lain yang diabaikan, mis. SID, KSEI01, npwp, dll).
-  - dt_inv & dt_due berbentuk string "DD/MM/YYYY HH:MM:SS" -> parse dengan dayfirst=True.
 """
 
 from __future__ import annotations
@@ -76,27 +66,69 @@ DISPLAY_HEADERS = {
 
 
 # --------------------------------------------------------------------------
+# 0. UNIVERSAL FILE READER (dukung .csv, .txt pipe-delimited, .xls, .xlsx)
+# --------------------------------------------------------------------------
+
+def _detect_ext(file) -> str:
+    name = getattr(file, "name", None)
+    if name is None:
+        name = str(file)
+    return name.lower().rsplit(".", 1)[-1] if "." in name else ""
+
+
+def _read_table(file, prefer_pipe: bool = False) -> pd.DataFrame:
+    """Baca file tabel apapun formatnya, deteksi otomatis dari ekstensi:
+    - .xls  -> pd.read_excel(engine='xlrd')
+    - .xlsx -> pd.read_excel(engine='openpyxl')
+    - .txt  -> pipe-delimited (StockCode|StockName|...)
+    - .csv  -> comma-delimited
+    Kalau file adalah objek upload Streamlit tanpa ekstensi terbaca, coba tebak
+    dari isinya (xls/xlsx = binary, sisanya text).
+    """
+    ext = _detect_ext(file)
+    if hasattr(file, "seek"):
+        file.seek(0)
+
+    if ext == "xls":
+        return pd.read_excel(file, dtype=str, engine="xlrd")
+    if ext == "xlsx":
+        return pd.read_excel(file, dtype=str, engine="openpyxl")
+    if ext == "txt" or prefer_pipe:
+        return pd.read_csv(file, sep="|", dtype=str)
+    if ext == "csv":
+        return pd.read_csv(file, dtype=str)
+
+    # fallback: coba deteksi dari byte pertama (biner Excel vs teks)
+    head = file.read(8) if hasattr(file, "read") else b""
+    if hasattr(file, "seek"):
+        file.seek(0)
+    if head[:2] == b"PK":  # xlsx = zip
+        return pd.read_excel(file, dtype=str, engine="openpyxl")
+    if head[:8] == b"\xd0\xcf\x11\xe0\xa1\xb1\x1a\xe1":  # xls = OLE2
+        return pd.read_excel(file, dtype=str, engine="xlrd")
+    if prefer_pipe:
+        return pd.read_csv(file, sep="|", dtype=str)
+    return pd.read_csv(file, dtype=str)
+
+
+# --------------------------------------------------------------------------
 # 1. PARSERS
 # --------------------------------------------------------------------------
 
 def parse_risk_parameter(file) -> dict:
-    """RiskParameter: file Excel (.xls) dengan kolom
-    StockCode | StockName | Haircut | AvailableQuantity."""
-    df = pd.read_excel(file, dtype=str)
+    """RiskParameter: StockCode, StockName, Haircut, AvailableQuantity.
+    Terima .txt (pipe-delimited), .csv, .xls, atau .xlsx."""
+    df = _read_table(file, prefer_pipe=True)
     df.columns = [c.strip() for c in df.columns]
-    required = {"StockCode", "Haircut"}
-    missing = required - set(df.columns)
-    if missing:
-        raise ValueError(f"Kolom wajib hilang di RiskParameter: {sorted(missing)}")
     df["StockCode"] = df["StockCode"].astype(str).str.strip()
     df["Haircut"] = pd.to_numeric(df["Haircut"], errors="coerce").fillna(0)
     return dict(zip(df["StockCode"], df["Haircut"]))
 
 
 def parse_closing_price(file) -> dict:
-    """Closing price: file Excel (.xls). Kolom kunci: no_share (kode saham),
-    kurs_now (harga). Kolom lain (descr, isin, dll) diabaikan."""
-    df = pd.read_excel(file)
+    """Closing price. Kolom kunci: no_share (kode saham), kurs_now (harga).
+    Terima .xls atau .xlsx."""
+    df = _read_table(file)
     df.columns = [str(c).strip() for c in df.columns]
     if "no_share" not in df.columns or "kurs_now" not in df.columns:
         raise ValueError(
@@ -108,10 +140,9 @@ def parse_closing_price(file) -> dict:
 
 
 def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
-    """list_invoice: file Excel (.xls) -> baris transaksi ternormalisasi (kolom internal).
-    Kolom sumber yang dipakai: dt_inv, no_inv, no_cust, name, bors, no_share, tot_vol,
-    rate, amt_done, dt_due. Kolom lain (SID, KSEI01, npwp, board, dll) diabaikan."""
-    df = pd.read_excel(file, dtype=str)
+    """list_invoice -> baris transaksi ternormalisasi (kolom internal).
+    Terima .csv, .xls, atau .xlsx."""
+    df = _read_table(file)
     df.columns = [c.strip() for c in df.columns]
 
     required = {"dt_inv", "no_cust", "name", "bors", "no_share", "tot_vol",
@@ -124,7 +155,6 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     out["CLIENT_ID"] = df["no_cust"].astype(str).str.strip()
     out["NAME"] = df["name"].astype(str).str.strip()
     out["B_S"] = df["bors"].astype(str).str.strip().str.upper()
-    # dt_inv / dt_due datang sebagai teks "DD/MM/YYYY HH:MM:SS" dari file .xls sumber
     out["TRX_DATE"] = pd.to_datetime(df["dt_inv"], dayfirst=True, errors="coerce")
     out["DUE_DATE"] = pd.to_datetime(df["dt_due"], dayfirst=True, errors="coerce")
     out["ACTIVITY"] = "TRX"
@@ -150,55 +180,7 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     out["RATIO"] = ""
     out["INV_NO"] = df["no_inv"].astype(str).str.strip()
 
-    out = out[TEMPLATE_COLUMNS]
-    return net_daily_transactions(out, hc_map, price_map)
-
-
-def net_daily_transactions(df: pd.DataFrame, hc_map: dict, price_map: dict) -> pd.DataFrame:
-    """Netting posisi per client per saham per hari transaksi.
-    Satu client tidak mungkin punya lebih dari satu baris utk saham yang sama di hari yang
-    sama -- baris-baris di list_invoice adalah rincian per-invoice dari bursa (bisa berkali-kali
-    Buy/Sell saham yang sama dalam sehari), tapi utk keperluan tracking funding/tranche, semua
-    itu harus di-net jadi SATU posisi bersih per (CLIENT_ID, STOCK, TRX_DATE) sebelum masuk ke
-    tahap assign_tranches/FIFO."""
-    if df.empty:
-        return df
-
-    rows = []
-    group_cols = ["CLIENT_ID", "STOCK", "TRX_DATE"]
-    for (cid, stock, trx_date), g in df.groupby(group_cols, sort=False, dropna=False):
-        net_vol = g["VOL"].sum()
-        net_amt = g["AMOUNT_TRX"].sum()
-        hc = hc_map.get(stock, g["HC"].iloc[0])
-        price = price_map.get(stock, g["PRICE"].iloc[0])
-        due_date = g["DUE_DATE"].max()
-        b_s = "B" if net_amt >= 0 else "S"
-        collateral = net_vol * price * (100 - hc) / 100
-        inv_no = "+".join(sorted(g["INV_NO"].astype(str).unique()))
-
-        rows.append({
-            "CLIENT_ID": cid,
-            "NAME": g["NAME"].iloc[0],
-            "B_S": b_s,
-            "TRX_DATE": trx_date,
-            "DUE_DATE": due_date,
-            "ACTIVITY": "TRX",
-            "STOCK": stock,
-            "HC": hc,
-            "VOL": net_vol,
-            "PRICE": price,
-            "COLLATERAL_IDR_HC": collateral,
-            "AMOUNT_TRX": net_amt,
-            "TRANCHE": "",
-            "FUNDING": net_amt,
-            "OUTSTANDING": 0.0,
-            "INTEREST": 0.0,
-            "RATIO": "",
-            "INV_NO": inv_no,
-        })
-
-    out2 = pd.DataFrame(rows)[TEMPLATE_COLUMNS]
-    return out2.sort_values(["TRX_DATE", "DUE_DATE", "CLIENT_ID", "STOCK"]).reset_index(drop=True)
+    return out[TEMPLATE_COLUMNS]
 
 
 def parse_previous_template(file) -> dict[str, pd.DataFrame]:
@@ -458,6 +440,7 @@ BOLD = Font(bold=True)
 
 
 def _write_df(ws, start_row, df, headers, number_cols=(), date_cols=()):
+    """number_cols/date_cols merujuk ke NAMA KOLOM ASLI df (bukan display header)."""
     for j, h in enumerate(headers, start=1):
         c = ws.cell(row=start_row, column=j, value=h)
         c.font = HEADER_FONT
@@ -502,10 +485,9 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         headers = [DISPLAY_HEADERS[c] for c in TEMPLATE_COLUMNS]
         next_row = _write_df(
             ws, start_row=4, df=disp, headers=headers,
-            number_cols=[DISPLAY_HEADERS[c] for c in
-                         ["HC", "VOL", "PRICE", "COLLATERAL_IDR_HC", "AMOUNT_TRX",
-                          "FUNDING", "OUTSTANDING", "INTEREST"]],
-            date_cols=[DISPLAY_HEADERS[c] for c in ["TRX_DATE", "DUE_DATE"]],
+            number_cols=["HC", "VOL", "PRICE", "COLLATERAL_IDR_HC", "AMOUNT_TRX",
+                         "FUNDING", "OUTSTANDING", "INTEREST"],
+            date_cols=["TRX_DATE", "DUE_DATE"],
         )
 
         # ---- Ringkasan total ----
