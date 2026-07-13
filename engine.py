@@ -16,7 +16,6 @@ from openpyxl.utils import get_column_letter
 RATE = 0.095          # 9.5% flat
 DAY_BASIS = 360       # 360 basis hari
 
-# Ditambahkan kolom MATURITY setelah DUE_DATE
 TEMPLATE_COLUMNS = [
     "CLIENT_ID", "NAME", "B_S", "TRX_DATE", "DUE_DATE", "MATURITY", "ACTIVITY", "STOCK",
     "HC", "VOL", "PRICE", "COLLATERAL_IDR_HC", "AMOUNT_TRX",
@@ -105,7 +104,7 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     out["B_S"] = df["bors"].astype(str).str.strip().str.upper()
     out["TRX_DATE"] = pd.to_datetime(df["dt_inv"], dayfirst=True, errors="coerce")
     out["DUE_DATE"] = pd.to_datetime(df["dt_due"], dayfirst=True, errors="coerce")
-    out["MATURITY"] = ""  # Akan diisi via rumus Excel dinamis saat ekspor
+    out["MATURITY"] = ""
     out["ACTIVITY"] = "TRX"
     out["STOCK"] = df["no_share"].astype(str).str.strip()
 
@@ -117,12 +116,12 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     price_fallback = pd.to_numeric(df["rate"], errors="coerce")
     out["PRICE"] = price_from_file.fillna(price_fallback)
     
-    out["COLLATERAL_IDR_HC"] = 0.0  # Formula Excel
+    out["COLLATERAL_IDR_HC"] = 0.0
     out["AMOUNT_TRX"] = pd.to_numeric(df["amt_done"], errors="coerce").fillna(0.0) * sign
     out["TRANCHE"] = ""
-    out["FUNDING"] = 0.0      # Formula Excel
-    out["OUTSTANDING"] = 0.0  # Formula Excel
-    out["INTEREST"] = 0.0     # Formula Excel
+    out["FUNDING"] = 0.0
+    out["OUTSTANDING"] = 0.0
+    out["INTEREST"] = 0.0
     out["RATIO"] = ""
     out["INV_NO"] = df["no_inv"].astype(str).str.strip()
 
@@ -269,15 +268,6 @@ def process_client(df: pd.DataFrame, as_of_date) -> pd.DataFrame:
     df = compute_ratio_flag(df)
     return df.sort_values(["TRX_DATE", "DUE_DATE", "INV_NO"]).reset_index(drop=True)
 
-def build_recap(df: pd.DataFrame, hc_map: dict, price_map: dict):
-    # Digunakan untuk summary ringkas di UI Streamlit frontend
-    tranche_summary = df.groupby("TRANCHE").agg(TOTAL_FUNDING=("AMOUNT_TRX", "sum"), LAST_DUE=("DUE_DATE", "max")).reset_index().sort_values("TRANCHE")
-    stock_pos = df.groupby("STOCK")["VOL"].sum().reset_index()
-    stock_pos = stock_pos[stock_pos["VOL"].round(0) != 0]
-    stock_pos["HC"] = stock_pos["STOCK"].map(hc_map).fillna(0.0)
-    stock_pos["PRICE"] = stock_pos["STOCK"].map(price_map).fillna(0.0)
-    stock_pos["COLLATERAL_IDR_HC"] = stock_pos["VOL"] * stock_pos["PRICE"] * (100 - stock_pos["HC"]) / 100
-    return tranche_summary, stock_pos, stock_pos["COLLATERAL_IDR_HC"].sum(), 0.0, 0.0
 
 # --- WRITER EXCEL DENGAN RUMUS/FORMULA MATRIKS HIDUP ---
 THIN = Side(style="thin", color="999999")
@@ -296,19 +286,16 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         sheet_name = re.sub(r"[\\/*?:\[\]]", "_", str(client_id))[:31]
         ws = wb.create_sheet(sheet_name)
 
-        # Info Header Client
         ws.cell(row=1, column=1, value="CLIENT ID").font = BOLD
         ws.cell(row=1, column=2, value=str(client_id))
         ws.cell(row=1, column=4, value="NAME").font = BOLD
         ws.cell(row=1, column=5, value=str(name))
         
-        # Simpan cell As of Date di E2 untuk referensi rumus interest ($E$2)
         ws.cell(row=2, column=4, value="As of Date:").font = BOLD
         as_of_cell = ws.cell(row=2, column=5, value=pd.Timestamp(as_of_date).to_pydatetime())
         as_of_cell.number_format = "yyyy-mm-dd"
 
-        # Tulis Headers Tabel utama (Mulai dari Baris 4)
-        headers = [DISPLAY_HEADERS[c] for c in TEMPLATE_COLUMNS]
+        headers = [DISPLAY_HEADERS.get(c, c) for c in TEMPLATE_COLUMNS]
         for j, h in enumerate(headers, start=1):
             c = ws.cell(row=4, column=j, value=h)
             c.font = HEADER_FONT
@@ -320,7 +307,6 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         for idx, row in df.iterrows():
             r = start_row + idx
             
-            # Tulis nilai mentah statis dasar
             ws.cell(row=r, column=1, value=row["CLIENT_ID"]).border = BORDER
             ws.cell(row=r, column=2, value=row["NAME"]).border = BORDER
             ws.cell(row=r, column=3, value=row["B_S"]).border = BORDER
@@ -333,8 +319,6 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             c_due.number_format = "yyyy-mm-dd"
             c_due.border = BORDER
 
-            # 1. RUMUS DYNAMIC MATURITY (Kolom F / 6) setelah Due Date (Kolom E / 5) sesuai request anda
-            # Formula dimodifikasi menggunakan pemisah semicolon/koma internal Excel standar (koma otomatis dikonversi openpyxl)
             formula_maturity = f'=IF(C{r}="B",IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))>6,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))-1,IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))<2,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))+1,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))),"")'
             c_mat = ws.cell(row=r, column=6, value=formula_maturity)
             c_mat.number_format = "yyyy-mm-dd"
@@ -355,7 +339,6 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             c_prc.number_format = "#,##0"
             c_prc.border = BORDER
 
-            # 2. RUMUS COLLATERAL IDR-HC (Kolom L / 12) -> J (VOL) * K (PRICE) * (100 - I (HC)) / 100
             ws.cell(row=r, column=12, value=f"=J{r}*K{r}*(100-I{r})/100").number_format = "#,##0"
             ws.cell(row=r, column=12).border = BORDER
 
@@ -365,7 +348,6 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
 
             ws.cell(row=r, column=14, value=row["TRANCHE"]).border = BORDER
 
-            # 3. RUMUS FUNDING (Kolom O / 15) - Menggunakan rumus FIFO matching dinamis
             formula_funding = (
                 f'=IF(N{r}="","",IF(OR(C{r}="B",C{r}="SW",C{r}="SD"),M{r},'
                 f'IF(ABS(SUM(SUMIFS($M$5:M{r},$A$5:A{r},A{r},$C$5:C{r},{"{"}"S","DR","CR"{"}"},$E$5:E{r},E{r})))<'
@@ -385,104 +367,77 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
                 f'ABS(SUM(SUMIFS($P$5:P{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),'
                 f'-SUMIFS($O$5:O{r-1},A$5:A{r-1},A{r},$N$5:N{r-1},N{r}))))'
             )
-            
-            # Proteksi khusus baris pertama data (Baris 5) agar tidak error #REF! karena memanggil baris r-1
             if idx == 0:
                 formula_funding = f'=IF(N{r}="","",M{r})'
 
             ws.cell(row=r, column=15, value=formula_funding).number_format = "#,##0"
             ws.cell(row=r, column=15).border = BORDER
 
-            # 4. RUMUS OUTSTANDING (Kolom P / 16) -> Saldo kumulatif per Tranche
             ws.cell(row=r, column=16, value=f'=SUMIFS($O$5:O{r},$N$5:N{r},N{r})').number_format = "#,##0"
             ws.cell(row=r, column=16).border = BORDER
 
-           # 5. RUMUS INTEREST DINAMIS (Kolom Q / 17)
-            # Menggunakan satu formula seragam dari baris pertama sampai akhir.
-            # Mengubah $Q$3:Q6 menjadi $Q$4:Q{r-1} (memulai dari header baris 4) agar aman dari #REF!
-            # Dan menggunakan separator lokal universal.
-            
             formula_interest = (
                 f'=IF($E$2-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$N$4:N{r-1},N{r})>ABS(O{r}),N{r}=N{r-1}),'
                 f'IFERROR((INDEX($E{r+1}:$E$500,MATCH(N{r},$N{r+1}:$N$500,0),1)-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360,($E$2-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360),'
                 f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$N$4:N{r-1},N{r})+IFERROR((INDEX($E{r+1}:$E$500,MATCH(N{r},$N{r+1}:$N$500,0),1)-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360,($E$2-E{r})*SUMIFS($O$4:O{r},$A$4:$A{r},A{r},$N$4:$N{r},N{r})*9.5%/360)))'
             )
-            
             ws.cell(row=r, column=17, value=formula_interest).number_format = "#,##0"
             ws.cell(row=r, column=17).border = BORDER
 
-        end_data_row = start_row + len(df) - 1
+            ws.cell(row=r, column=18, value=row["RATIO"]).border = BORDER
+            ws.cell(row=r, column=19, value=row["INV_NO"]).border = BORDER
 
         end_data_row = start_row + len(df) - 1
 
-        # ---- REKAPITULASI BARIS 44+ (LAST LOAN & BREAKDOWN DI BAWAHNYA) ----
-        r = end_data_row + 2  # Memberikan jarak 1 baris kosong di bawah data utama
+        # =========================================================================
+        # ---- REKAPITULASI BARIS BAWAH (LAST LOAN & BREAKDOWN) ----
+        # =========================================================================
+        r = end_data_row + 2
         
-        # 1. Tulis Identitas Statis di kolom utama
+        # 1. Baris LAST LOAN
         ws.cell(row=r, column=1, value=str(client_id)).border = BORDER
         ws.cell(row=r, column=2, value=str(name)).border = BORDER
         ws.cell(row=r, column=7, value="LAST LOAN").font = BOLD
         ws.cell(row=r, column=7).border = BORDER
 
-        # 2. Rumus Due Date Dinamis (Kolom E / 5) mencari record tanggal terisi terakhir
         formula_last_due = f'=IF($E$2<=LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),$E$2)'
         c_ldue = ws.cell(row=r, column=5, value=formula_last_due)
         c_ldue.number_format = "yyyy-mm-dd"
         c_ldue.font = BOLD
         c_ldue.border = BORDER
 
-        # 3. Rumus Total Collateral Volume (Kolom J / 10)
-        c_vol_tot = ws.cell(row=r, column=10, value=f"=SUM(J5:J{end_data_row})")
-        c_vol_tot.number_format = "#,##0"
-        c_vol_tot.font = BOLD
-        c_vol_tot.border = BORDER
-
-        # 4. Rumus Total Collateral IDR-HC (Kolom L / 12)
-        c_col_tot = ws.cell(row=r, column=12, value=f"=SUM(L5:L{end_data_row})")
-        c_col_tot.number_format = "#,##0"
-        c_col_tot.font = BOLD
-        c_col_tot.border = BORDER
-
-        # 5. Rumus Total Funding (Kolom O / 15)
-        c_fun_tot = ws.cell(row=r, column=15, value=f"=SUM(O5:O{end_data_row})")
-        c_fun_tot.number_format = "#,##0"
-        c_fun_tot.font = BOLD
-        c_fun_tot.border = BORDER
-
-        # 6. Rumus Total Interest (Kolom Q / 17)
-        c_int_tot = ws.cell(row=r, column=17, value=f"=SUM(Q5:Q{end_data_row})")
-        c_int_tot.number_format = "#,##0"
-        c_int_tot.font = BOLD
-        c_int_tot.border = BORDER
-
-        # 7. Rumus Loan Ratio (Kolom R / 18) -> =IF(L_total=0, 0, (O_total + Q_total) / L_total)
-        c_rat_tot = ws.cell(row=r, column=18, value=f"=IF(L{r}=0,0,(O{r}+Q{r})/L{r})")
-        c_rat_tot.number_format = "0.00%"
-        c_rat_tot.font = BOLD
-        c_rat_tot.border = BORDER
+        ws.cell(row=r, column=10, value=f"=SUM(J5:J{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=12, value=f"=SUM(L5:L{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=15, value=f"=SUM(O5:O{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=17, value=f"=SUM(Q5:Q{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=18, value=f"=IF(L{r}=0,0,(O{r}+Q{r})/L{r})").number_format = "0.00%"
         
-        # Kosongkan sisa border kolom rekap agar seragam dan rapi
+        for col_idx in [10, 12, 15, 17, 18]:
+            ws.cell(row=r, column=col_idx).font = BOLD
+            ws.cell(row=r, column=col_idx).border = BORDER
+            
         for col_idx in [3, 4, 6, 8, 9, 11, 13, 14, 16, 19]:
             ws.cell(row=r, column=col_idx, value="").border = BORDER
 
-        # ---- DETAIL BREAKDOWN PELUNASAN FUNDING PER TRANCHE & COLLATERAL SEPERTI DI TEMPLATE ASLI ----
+        # 2. Tabel Breakdown Funding
+        tranche_df = df.groupby("TRANCHE")["AMOUNT_TRX"].sum().reset_index()
+        
         r += 3
         ws.cell(row=r, column=1, value="PELUNASAN FUNDING").font = BOLD
-        
-        # Tulis ulang summary Tranche dan Stock Posisi menggunakan logika dataframe ringkas
-        tranche_summary, stock_pos, _, _, _ = build_recap(df, hc_map, price_map)
-        
-        # Header Mini Tabel Pelunasan Funding
         r += 1
         ws.cell(row=r, column=1, value="TRANCHE").font = BOLD
         ws.cell(row=r, column=2, value="TOTAL FUNDING").font = BOLD
         
-        for _, t_row in tranche_summary.iterrows():
-            r += 1
-            ws.cell(row=r, column=1, value=t_row["TRANCHE"])
-            ws.cell(row=r, column=2, value=t_row["TOTAL_FUNDING"]).number_format = "#,##0"
-            
-        # Header Mini Tabel Collateral Saham saat ini
+        for _, t_row in tranche_df.iterrows():
+            if str(t_row["TRANCHE"]).strip() and not pd.isna(t_row["TRANCHE"]):
+                r += 1
+                ws.cell(row=r, column=1, value=t_row["TRANCHE"])
+                ws.cell(row=r, column=2, value=t_row["AMOUNT_TRX"]).number_format = "#,##0"
+                
+        # 3. Tabel Breakdown Collateral Saham
+        stock_df = df.groupby("STOCK").agg({"HC": "first", "VOL": "sum", "PRICE": "first"}).reset_index()
+        stock_df["COLLATERAL_IDR"] = stock_df["VOL"] * stock_df["PRICE"] * (100 - stock_df["HC"]) / 100
+        
         r += 3
         ws.cell(row=r, column=1, value="COLLATERAL SAHAM (posisi saat ini)").font = BOLD
         r += 1
@@ -492,23 +447,14 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         ws.cell(row=r, column=4, value="PRICE").font = BOLD
         ws.cell(row=r, column=5, value="COLLATERAL (IDR-HC)").font = BOLD
         
-        for _, s_row in stock_pos.iterrows():
-            r += 1
-            ws.cell(row=r, column=1, value=s_row["STOCK"])
-            ws.cell(row=r, column=2, value=s_row["HC"] / 100).number_format = "0.0%"
-            ws.cell(row=r, column=3, value=s_row["VOL"]).number_format = "#,##0"
-            ws.cell(row=r, column=4, value=s_row["PRICE"]).number_format = "#,##0"
-            ws.cell(row=r, column=5, value=s_row["COLLATERAL_IDR_HC"]).number_format = "#,##0"
-
-        # Auto-adjust column width
-        for col_cells in ws.columns:
-            length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=8)
-            col_letter = get_column_letter(col_cells[0].column)
-            ws.column_dimensions[col_letter].width = min(max(length + 2, 10), 30)
-
-    bio = io.BytesIO()
-    wb.save(bio)
-    return bio.getvalue()
+        for _, s_row in stock_df.iterrows():
+            if round(s_row["VOL"]) != 0:
+                r += 1
+                ws.cell(row=r, column=1, value=s_row["STOCK"])
+                ws.cell(row=r, column=2, value=s_row["HC"] / 100).number_format = "0.0%"
+                ws.cell(row=r, column=3, value=s_row["VOL"]).number_format = "#,##0"
+                ws.cell(row=r, column=4, value=s_row["PRICE"]).number_format = "#,##0"
+                ws.cell(row=r, column=5, value=s_row["COLLATERAL_IDR"]).number_format = "#,##0"
 
         # Auto-adjust column width
         for col_cells in ws.columns:
