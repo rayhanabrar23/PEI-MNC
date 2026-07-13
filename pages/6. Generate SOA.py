@@ -47,7 +47,8 @@ if process_btn:
     try:
         hc_map = engine.parse_risk_parameter(risk_param_file)
         price_map = engine.parse_closing_price(price_file)
-        new_tx = engine.parse_list_invoice(invoice_file, hc_map, price_map)
+        raw_tx = engine.parse_list_invoice(invoice_file, hc_map, price_map)
+        new_tx = engine.net_transactions(raw_tx)
         old_history = engine.parse_previous_template(template_file) if template_file else {}
 
         all_client_ids = sorted(set(new_tx["CLIENT_ID"]) | set(old_history.keys()))
@@ -67,7 +68,10 @@ if process_btn:
             "merged_by_client": merged_by_client,
             "as_of": as_of,
         }
-        st.success(f"Berhasil diproses: {len(merged_by_client)} client.")
+        st.success(
+            f"Berhasil diproses: {len(merged_by_client)} client. "
+            f"Netting: {len(raw_tx)} baris raw invoice → {len(new_tx)} baris net posisi harian."
+        )
     except Exception as e:
         st.error(f"Gagal memproses file: {e}")
         st.session_state.processed = None
