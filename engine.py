@@ -325,23 +325,33 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         start_row = 5
         end_data_row = start_row + len(df) - 1
         summary_row = end_data_row + 2  # baris "LAST LOAN" (kolom E berisi tanggal cut-off efektif)
+
+        def set_cell(row_i, col_i, value, number_format=None, bold=False):
+            cell = ws.cell(row=row_i, column=col_i, value=value)
+            cell.border = BORDER
+            if number_format:
+                cell.number_format = number_format
+            if bold:
+                cell.font = BOLD
+            return cell
+
         for idx, row in df.iterrows():
             r = start_row + idx
             
-            # Kolom 1-13 (Sama)
-            ws.cell(row=r, column=1, value=row["CLIENT_ID"]).border = BORDER
-            ws.cell(row=r, column=2, value=row["NAME"]).border = BORDER
-            ws.cell(row=r, column=3, value=row["B_S"]).border = BORDER
-            ws.cell(row=r, column=4, value=pd.Timestamp(row["TRX_DATE"]).to_pydatetime() if pd.notna(row["TRX_DATE"]) else None).number_format = "yyyy-mm-dd"
-            ws.cell(row=r, column=5, value=pd.Timestamp(row["DUE_DATE"]).to_pydatetime() if pd.notna(row["DUE_DATE"]) else None).number_format = "yyyy-mm-dd"
-            ws.cell(row=r, column=6, value=f'=IF(C{r}="B",IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))>6,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))-1,IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))<2,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))+1,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))),"")')
-            ws.cell(row=r, column=7, value=row["ACTIVITY"]).border = BORDER
-            ws.cell(row=r, column=8, value=row["STOCK"]).border = BORDER
-            ws.cell(row=r, column=9, value=row["HC"]).number_format = "#,##0.00"
-            ws.cell(row=r, column=10, value=row["VOL"]).number_format = "#,##0"
-            ws.cell(row=r, column=11, value=row["PRICE"]).number_format = "#,##0"
-            ws.cell(row=r, column=12, value=f"=J{r}*K{r}*(100-I{r})/100").number_format = "#,##0"
-            ws.cell(row=r, column=13, value=row["AMOUNT_TRX"]).number_format = "#,##0"
+            # Kolom 1-13
+            set_cell(r, 1, row["CLIENT_ID"])
+            set_cell(r, 2, row["NAME"])
+            set_cell(r, 3, row["B_S"])
+            set_cell(r, 4, pd.Timestamp(row["TRX_DATE"]).to_pydatetime() if pd.notna(row["TRX_DATE"]) else None, "yyyy-mm-dd")
+            set_cell(r, 5, pd.Timestamp(row["DUE_DATE"]).to_pydatetime() if pd.notna(row["DUE_DATE"]) else None, "yyyy-mm-dd")
+            set_cell(r, 6, f'=IF(C{r}="B",IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))>6,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))-1,IF(WEEKDAY(DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))<2,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r}))+1,DATE(YEAR(E{r}),MONTH(E{r})+3,DAY(E{r})))),"")', "yyyy-mm-dd")
+            set_cell(r, 7, row["ACTIVITY"])
+            set_cell(r, 8, row["STOCK"])
+            set_cell(r, 9, row["HC"], "#,##0.00")
+            set_cell(r, 10, row["VOL"], "#,##0")
+            set_cell(r, 11, row["PRICE"], "#,##0")
+            set_cell(r, 12, f"=J{r}*K{r}*(100-I{r})/100", "#,##0")
+            set_cell(r, 13, row["AMOUNT_TRX"], "#,##0")
 
             # 14. FUNDING (Kolom N / 14)
             # Rumus disesuaikan: P sekarang adalah kolom Tranche, N adalah kolom Funding
@@ -364,26 +374,26 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
                 f'ABS(SUM(SUMIFS($O$5:O{r-1},$A$5:A{r-1},A{r},$C$5:C{r-1},{"{"}"S","DR","CR"{"}"},$E$5:E{r-1},E{r})))),'
                 f'-SUMIFS($N$5:N{r-1},A$5:A{r-1},A{r},$P$5:P{r-1},P{r}))))'
             )
-            ws.cell(row=r, column=14, value=f_fund if idx > 0 else f'=IF(P{r}="","",M{r})').number_format = "#,##0"
-            
+            set_cell(r, 14, f_fund if idx > 0 else f'=IF(P{r}="","",M{r})', "#,##0")
+
             # 15. OUTSTANDING (Kolom O / 15)
             # outstanding sekarang adalah akumulasi Funding (kolom N) berdasarkan Tranche (kolom P)
-            ws.cell(row=r, column=15, value=f'=SUMIFS($N$5:N{r},$P$5:P{r},P{r})').number_format = "#,##0"
-            
+            set_cell(r, 15, f'=SUMIFS($N$5:N{r},$P$5:P{r},P{r})', "#,##0")
+
             # 16. LN / TRANCHE (Kolom P / 16)
-            ws.cell(row=r, column=16, value=row["TRANCHE"]).border = BORDER
-            
+            set_cell(r, 16, row["TRANCHE"])
+
             # 17. INTEREST (Kolom Q / 17)
             formula_interest = (
                 f'=IF($E${summary_row}-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),M{r}=N{r}),'
                 f'IFERROR((INDEX($E{r+1}:$E${summary_row},MATCH(P{r},$P{r+1}:$P${end_data_row},0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),'
                 f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E${summary_row},MATCH(P{r},$P{r+1}:$P${end_data_row},0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))+SUM(R{r})'
             )
-            ws.cell(row=r, column=17, value=formula_interest).number_format = "#,##0"
-            
+            set_cell(r, 17, formula_interest, "#,##0")
+
             # 18-19. RATIO & INV_NO
-            ws.cell(row=r, column=18, value=row["RATIO"]).border = BORDER
-            ws.cell(row=r, column=19, value=row["INV_NO"]).border = BORDER
+            set_cell(r, 18, row["RATIO"])
+            set_cell(r, 19, row["INV_NO"])
 
         # =========================================================================
         # ---- REKAPITULASI BARIS BAWAH: PENEMPATAN SEJAJAR KOLOM ATASNYA ----
@@ -487,7 +497,7 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         for t in tranches:
             f_fund_sum = f'=SUMIFS($N${start_row}:N{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
             f_int_sum = f'=SUMIFS($Q${start_row}:Q{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
-            f_due = f'=MAXIFS($E${start_row}:E{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
+            f_due = f'=_xlfn.MAXIFS($E${start_row}:E{end_data_row},$P${start_row}:P{end_data_row},"{t}")'
 
             ws.cell(row=r_tranche, column=14, value=f_fund_sum).number_format = "#,##0"
             ws.cell(row=r_tranche, column=14).border = BORDER
@@ -511,11 +521,17 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         c_tot_int.font = BOLD
         c_tot_int.border = BORDER
 
-        # Auto-adjust column width
-        for col_cells in ws.columns:
-            length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=8)
-            col_letter = get_column_letter(col_cells[0].column)
-            ws.column_dimensions[col_letter].width = min(max(length + 2, 10), 30)
+        # Lebar kolom tetap (auto-width dari panjang formula tidak akurat)
+        COLUMN_WIDTHS = {
+            1: 12, 2: 26, 3: 6, 4: 12, 5: 12, 6: 12, 7: 16, 8: 10, 9: 8,
+            10: 14, 11: 10, 12: 18, 13: 15, 14: 15, 15: 15, 16: 10, 17: 15,
+            18: 10, 19: 22,
+        }
+        for col_idx, width in COLUMN_WIDTHS.items():
+            ws.column_dimensions[get_column_letter(col_idx)].width = width
+
+        # Bekukan baris header supaya tetap terlihat saat scroll
+        ws.freeze_panes = "A5"
 
     bio = io.BytesIO()
     wb.save(bio)
