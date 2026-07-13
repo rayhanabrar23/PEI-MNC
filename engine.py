@@ -413,16 +413,102 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
 
         end_data_row = start_row + len(df) - 1
 
-        # ---- Ringkasan Total bawah tabel utama ----
-        r = end_data_row + 2
-        ws.cell(row=r, column=1, value="TOTAL OUTSTANDING").font = BOLD
-        ws.cell(row=r, column=2, value=f"=SUM(P5:P{end_data_row})").number_format = "#,##0"
-        ws.cell(row=r, column=2).font = BOLD
+        end_data_row = start_row + len(df) - 1
+
+        # ---- REKAPITULASI BARIS 44+ (LAST LOAN & BREAKDOWN DI BAWAHNYA) ----
+        r = end_data_row + 2  # Memberikan jarak 1 baris kosong di bawah data utama
+        
+        # 1. Tulis Identitas Statis di kolom utama
+        ws.cell(row=r, column=1, value=str(client_id)).border = BORDER
+        ws.cell(row=r, column=2, value=str(name)).border = BORDER
+        ws.cell(row=r, column=7, value="LAST LOAN").font = BOLD
+        ws.cell(row=r, column=7).border = BORDER
+
+        # 2. Rumus Due Date Dinamis (Kolom E / 5) mencari record tanggal terisi terakhir
+        formula_last_due = f'=IF($E$2<=LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),LOOKUP(2,1/(NOT(ISBLANK(E$5:E{end_data_row}))),E$5:E{end_data_row}),$E$2)'
+        c_ldue = ws.cell(row=r, column=5, value=formula_last_due)
+        c_ldue.number_format = "yyyy-mm-dd"
+        c_ldue.font = BOLD
+        c_ldue.border = BORDER
+
+        # 3. Rumus Total Collateral Volume (Kolom J / 10)
+        c_vol_tot = ws.cell(row=r, column=10, value=f"=SUM(J5:J{end_data_row})")
+        c_vol_tot.number_format = "#,##0"
+        c_vol_tot.font = BOLD
+        c_vol_tot.border = BORDER
+
+        # 4. Rumus Total Collateral IDR-HC (Kolom L / 12)
+        c_col_tot = ws.cell(row=r, column=12, value=f"=SUM(L5:L{end_data_row})")
+        c_col_tot.number_format = "#,##0"
+        c_col_tot.font = BOLD
+        c_col_tot.border = BORDER
+
+        # 5. Rumus Total Funding (Kolom O / 15)
+        c_fun_tot = ws.cell(row=r, column=15, value=f"=SUM(O5:O{end_data_row})")
+        c_fun_tot.number_format = "#,##0"
+        c_fun_tot.font = BOLD
+        c_fun_tot.border = BORDER
+
+        # 6. Rumus Total Interest (Kolom Q / 17)
+        c_int_tot = ws.cell(row=r, column=17, value=f"=SUM(Q5:Q{end_data_row})")
+        c_int_tot.number_format = "#,##0"
+        c_int_tot.font = BOLD
+        c_int_tot.border = BORDER
+
+        # 7. Rumus Loan Ratio (Kolom R / 18) -> =IF(L_total=0, 0, (O_total + Q_total) / L_total)
+        c_rat_tot = ws.cell(row=r, column=18, value=f"=IF(L{r}=0,0,(O{r}+Q{r})/L{r})")
+        c_rat_tot.number_format = "0.00%"
+        c_rat_tot.font = BOLD
+        c_rat_tot.border = BORDER
+        
+        # Kosongkan sisa border kolom rekap agar seragam dan rapi
+        for col_idx in [3, 4, 6, 8, 9, 11, 13, 14, 16, 19]:
+            ws.cell(row=r, column=col_idx, value="").border = BORDER
+
+        # ---- DETAIL BREAKDOWN PELUNASAN FUNDING PER TRANCHE & COLLATERAL SEPERTI DI TEMPLATE ASLI ----
+        r += 3
+        ws.cell(row=r, column=1, value="PELUNASAN FUNDING").font = BOLD
+        
+        # Tulis ulang summary Tranche dan Stock Posisi menggunakan logika dataframe ringkas
+        tranche_summary, stock_pos, _, _, _ = build_recap(df, hc_map, price_map)
+        
+        # Header Mini Tabel Pelunasan Funding
         r += 1
-        ws.cell(row=r, column=1, value="TOTAL INTEREST").font = BOLD
-        ws.cell(row=r, column=2, value=f"=SUM(Q5:Q{end_data_row})").number_format = "#,##0"
-        ws.cell(row=r, column=2).font = BOLD
-        r += 2
+        ws.cell(row=r, column=1, value="TRANCHE").font = BOLD
+        ws.cell(row=r, column=2, value="TOTAL FUNDING").font = BOLD
+        
+        for _, t_row in tranche_summary.iterrows():
+            r += 1
+            ws.cell(row=r, column=1, value=t_row["TRANCHE"])
+            ws.cell(row=r, column=2, value=t_row["TOTAL_FUNDING"]).number_format = "#,##0"
+            
+        # Header Mini Tabel Collateral Saham saat ini
+        r += 3
+        ws.cell(row=r, column=1, value="COLLATERAL SAHAM (posisi saat ini)").font = BOLD
+        r += 1
+        ws.cell(row=r, column=1, value="STOCK").font = BOLD
+        ws.cell(row=r, column=2, value="HC").font = BOLD
+        ws.cell(row=r, column=3, value="VOL").font = BOLD
+        ws.cell(row=r, column=4, value="PRICE").font = BOLD
+        ws.cell(row=r, column=5, value="COLLATERAL (IDR-HC)").font = BOLD
+        
+        for _, s_row in stock_pos.iterrows():
+            r += 1
+            ws.cell(row=r, column=1, value=s_row["STOCK"])
+            ws.cell(row=r, column=2, value=s_row["HC"] / 100).number_format = "0.0%"
+            ws.cell(row=r, column=3, value=s_row["VOL"]).number_format = "#,##0"
+            ws.cell(row=r, column=4, value=s_row["PRICE"]).number_format = "#,##0"
+            ws.cell(row=r, column=5, value=s_row["COLLATERAL_IDR_HC"]).number_format = "#,##0"
+
+        # Auto-adjust column width
+        for col_cells in ws.columns:
+            length = max((len(str(c.value)) for c in col_cells if c.value is not None), default=8)
+            col_letter = get_column_letter(col_cells[0].column)
+            ws.column_dimensions[col_letter].width = min(max(length + 2, 10), 30)
+
+    bio = io.BytesIO()
+    wb.save(bio)
+    return bio.getvalue()
 
         # Auto-adjust column width
         for col_cells in ws.columns:
