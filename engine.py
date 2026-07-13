@@ -268,6 +268,25 @@ def process_client(df: pd.DataFrame, as_of_date) -> pd.DataFrame:
     df = compute_ratio_flag(df)
     return df.sort_values(["TRX_DATE", "DUE_DATE", "INV_NO"]).reset_index(drop=True)
 
+def build_recap(df: pd.DataFrame, hc_map: dict, price_map: dict):
+    # Fungsi ini dipanggil oleh Streamlit UI untuk menampilkan ringkasan
+    if df.empty:
+        return pd.DataFrame(), pd.DataFrame(), 0.0, 0.0, 0.0
+        
+    tranche_summary = df.groupby("TRANCHE").agg(
+        TOTAL_FUNDING=("AMOUNT_TRX", "sum"), 
+        LAST_DUE=("DUE_DATE", "max")
+    ).reset_index().sort_values("TRANCHE")
+    
+    stock_pos = df.groupby("STOCK")["VOL"].sum().reset_index()
+    stock_pos = stock_pos[stock_pos["VOL"].round(0) != 0]
+    stock_pos["HC"] = stock_pos["STOCK"].map(hc_map).fillna(0.0)
+    stock_pos["PRICE"] = stock_pos["STOCK"].map(price_map).fillna(0.0)
+    stock_pos["COLLATERAL_IDR_HC"] = stock_pos["VOL"] * stock_pos["PRICE"] * (100 - stock_pos["HC"]) / 100
+    
+    portfolio_total = stock_pos["COLLATERAL_IDR_HC"].sum()
+    
+    return tranche_summary, stock_pos, portfolio_total, 0.0, 0.0
 
 # --- WRITER EXCEL DENGAN RUMUS/FORMULA MATRIKS HIDUP ---
 THIN = Side(style="thin", color="999999")
