@@ -97,14 +97,16 @@ if st.session_state.processed:
     raw_df = merged_by_client[selected_client]
     # tampilkan hasil auto-assign dulu supaya user tahu current state
     preview_df = engine.assign_tranches(raw_df.copy())
-    display_cols = ["TRX_DATE", "DUE_DATE", "B_S", "STOCK", "VOL", "PRICE",
-                     "AMOUNT_TRX", "TRANCHE", "INV_NO"]
+    display_cols = ["TRX_DATE", "DUE_DATE", "MATURITY", "B_S", "STOCK", "VOL", "PRICE",
+                    "AMOUNT_TRX", "TRANCHE", "INV_NO"]
+    
     edited = st.data_editor(
         preview_df[display_cols],
         column_config={
-            "TRANCHE": st.column_config.TextColumn("LN (Tranche)", help="Edit manual kalau perlu"),
+            "TRANCHE": st.column_config.TextColumn("LN (Tranche)", help="Edit manual kalo perlu"),
             "TRX_DATE": st.column_config.DateColumn("TRX DATE", format="YYYY-MM-DD"),
             "DUE_DATE": st.column_config.DateColumn("DUE DATE", format="YYYY-MM-DD"),
+            "MATURITY": st.column_config.TextColumn("MATURITY (Auto Excel)", disabled=True),
         },
         disabled=[c for c in display_cols if c != "TRANCHE"],
         use_container_width=True,
