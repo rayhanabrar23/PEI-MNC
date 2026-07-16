@@ -151,7 +151,7 @@ def parse_previous_template(file) -> dict[str, pd.DataFrame]:
         header_row_idx = None
         for i, r in enumerate(rows):
             cells = [str(c).strip() if c is not None else "" for c in r]
-            if "CLIENT ID" in cells:
+            if "CLIENT ID" in cells and "TRX DATE" in cells and "DUE DATE" in cells:
                 header_row_idx = i
                 break
         if header_row_idx is None:
