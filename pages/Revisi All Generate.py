@@ -15,7 +15,7 @@ for key in [
     'shared_netting', 'shared_net_buy', 'shared_net_sell', 'shared_cid_to_sid',
     'shared_op_data',
     # TRX PEI
-    'pei_results',
+    'pei_results', 'pei_results_original',
     # Validasi MNC
     'df_sell_edited', 'sid_results', 'global_result', 'df_buy',
     'df_buy_adjusted', 'cl_data',
@@ -450,6 +450,7 @@ with tab_pei:
                         }
 
                 st.session_state['pei_results'] = results
+                st.session_state['pei_results_original'] = copy.deepcopy(results)
                 st.success("✅ TRX PEI berhasil diproses!")
             except Exception as e:
                 st.error(f"❌ Gagal: {e}")
@@ -547,50 +548,38 @@ with tab_pei:
                 sel = st.selectbox("Pilih Nasabah:", sid_options,
                     format_func=lambda s: f"{s} — {results[s]['name']}", key='pei_sim_sel')
                 d = results[sel]
+                if d.get('is_simulated'):
+                    st.success("✏️ Menggunakan nilai simulasi yang sudah disimpan.")
                 c1,c2,c3 = st.columns(3)
                 c1.metric("Loan Outstanding", fmt_rp(d['loan_existing']))
                 c2.metric("Collateral Awal",  fmt_rp(d['coll_before_rp']))
                 c3.metric("Current Ratio", f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
-                rp_inputs = {}
-                for rd in d['rp_detail']:
-                    if not rd['ada_di_op']: continue
-                    num_key   = f"pei_rp_{sel}_{rd['stock']}"
-                    basis_key = f"pei_rp_basis_{sel}_{rd['stock']}"
-                    prev_key  = f"{basis_key}_prev"
 
-                    c_s1, c_s2, c_s3, c_s4 = st.columns([2,1,1,2])
-                    with c_s1:
-                        st.markdown(f"**{rd['stock']}** Lot Jual: {int(rd['lot_sell']):,} | Lot OP: {int(rd['lot_op']):,}")
-                    with c_s2:
-                        st.caption("RP Min (tanpa buffer)"); st.write(fmt_rp(rd['rp_min']))
-                    with c_s3:
-                        st.caption("RP Maks (+1% buffer)"); st.write(fmt_rp(rd['rp_maks']))
+                rp_ref_rows = [rd for rd in d['rp_detail'] if rd['ada_di_op']]
+                if rp_ref_rows:
+                    st.caption("Ringkasan saham RP (referensi — lot keluar tetap dihitung penuh)")
+                    df_rp_ref = pd.DataFrame([{
+                        'Saham': rd['stock'], 'Lot Jual': int(rd['lot_sell']),
+                        'Lot OP': int(rd['lot_op']), 'Lot Keluar': int(rd['lot_keluar']),
+                        'Harga': rd['price'], 'RP Min': rd['rp_min'], 'RP Maks': rd['rp_maks'],
+                    } for rd in rp_ref_rows])
+                    st.dataframe(df_rp_ref, use_container_width=True, hide_index=True)
 
-                    basis = st.radio(
-                        f"Basis RP {rd['stock']}",
-                        ["Tanpa Buffer (Min)", "Dengan Buffer (Maks)", "Bebas"],
-                        key=basis_key, index=1, horizontal=True, label_visibility="collapsed",
-                    )
-                    if st.session_state.get(prev_key) != basis:
-                        if basis == "Tanpa Buffer (Min)":
-                            st.session_state[num_key] = float(rd['rp_min'])
-                        elif basis == "Dengan Buffer (Maks)":
-                            st.session_state[num_key] = float(rd['rp_maks'])
-                        st.session_state[prev_key] = basis
+                num_key = f"pei_rp_total_{sel}"
+                if num_key not in st.session_state:
+                    st.session_state[num_key] = float(d['total_rp_maks'])
 
-                    with c_s4:
-                        rp_val = st.number_input(
-                            f"RP {rd['stock']}", step=1_000_000.0, format="%.0f",
-                            key=num_key, label_visibility="collapsed",
-                        )
-                    rp_inputs[rd['stock']] = {'rp_value': rp_val, 'lot_keluar': rd['lot_keluar']}
+                st.caption(f"Total RP Min: {fmt_rp(d['total_rp_min'])}  |  Total RP Maks (+1%): {fmt_rp(d['total_rp_maks'])}")
+                total_rp_sim = st.number_input(
+                    "Total RP Adjust", step=1_000_000.0, format="%.0f", key=num_key,
+                )
 
-                total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
                 stocks_ar_sim = dict(d['stocks_op'])
-                for stock, v in rp_inputs.items():
-                    if v['lot_keluar'] > 0:
-                        stocks_ar_sim[stock] = stocks_ar_sim.get(stock,0) - v['lot_keluar']
-                        if stocks_ar_sim.get(stock,0) <= 0: stocks_ar_sim.pop(stock, None)
+                for rd in rp_ref_rows:
+                    if rd['lot_keluar'] > 0:
+                        stocks_ar_sim[rd['stock']] = stocks_ar_sim.get(rd['stock'], 0) - rd['lot_keluar']
+                        if stocks_ar_sim.get(rd['stock'], 0) <= 0:
+                            stocks_ar_sim.pop(rd['stock'], None)
                 coll_ar_sim, _ = calc_collateral(stocks_ar_sim, closing_prices, risk_params_hc)
                 loan_ar_sim    = max(d['loan_existing'] - total_rp_sim, 0)
                 rasio_rp_sim   = (loan_ar_sim + d['accrued']) / coll_ar_sim if coll_ar_sim > 0 else None
@@ -629,6 +618,39 @@ with tab_pei:
                     delta="✅ LOLOS" if lr_ok else "❌ Perlu dipotong",
                     delta_color="normal" if lr_ok else "inverse")
                 l6.metric("Max LR Final (63%)", fmt_rp(max_final_sim))
+
+                st.divider()
+                sv1, sv2, sv3 = st.columns(3)
+                if sv1.button("💾 Simpan Simulasi", use_container_width=True, type="primary", key=f'pei_save_{sel}'):
+                    updated = copy.deepcopy(st.session_state['pei_results'][sel])
+                    updated['is_simulated']    = True
+                    updated['loan_after_rp']   = loan_ar_sim
+                    updated['coll_after_rp']   = coll_ar_sim
+                    updated['coll_after_lr']   = coll_al_sim
+                    updated['rasio_rp']        = rasio_rp_sim
+                    updated['rasio_lr']        = rasio_lr_sim
+                    updated['avail_efektif']   = avail_eff_sim
+                    updated['ceiling_lr']      = ceiling_sim
+                    updated['max_lr_63']       = max63_sim
+                    updated['max_lr_65']       = max65_sim
+                    updated['max_lr_final']    = max_final_sim
+                    updated['total_rp_maks']   = total_rp_sim
+                    updated['stocks_after_rp'] = stocks_ar_sim
+                    updated['stocks_after_lr'] = stocks_al_sim
+                    st.session_state['pei_results'][sel] = updated
+                    st.success(f"✅ Simulasi {sel} disimpan — cek tab Summary/Export untuk hasil terbaru.")
+                    st.rerun()
+                if sv2.button("↩️ Reset Nasabah Ini", use_container_width=True, key=f'pei_reset1_{sel}'):
+                    orig = st.session_state.get('pei_results_original', {})
+                    if sel in orig:
+                        st.session_state['pei_results'][sel] = copy.deepcopy(orig[sel])
+                        st.session_state.pop(num_key, None)
+                        st.rerun()
+                if sv3.button("🔄 Reset Semua", use_container_width=True, key='pei_reset_all'):
+                    orig = st.session_state.get('pei_results_original', {})
+                    if orig:
+                        st.session_state['pei_results'] = copy.deepcopy(orig)
+                        st.rerun()
 
         with sub_sum:
             st.subheader("📋 Summary Semua Nasabah PEI")
@@ -1047,57 +1069,39 @@ with tab_mnc:
                 c2.metric("Collateral Awal",  fmt_rp(d['coll_before_rp']))
                 c3.metric("Current Ratio", f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
 
-                original_d   = (st.session_state.get('sid_results_original') or {}).get(sel_sid, d)
-                saved_input  = st.session_state.get(f'mnc_sim_saved_{sel_sid}', {})
-                rp_inputs    = {}
+                original_d  = (st.session_state.get('sid_results_original') or {}).get(sel_sid, d)
+                saved_total = st.session_state.get(f'mnc_sim_saved_total_{sel_sid}')
 
-                if d['rp_skipped']:
-                    st.info("Loan Existing = 0 → RP tidak diperlukan.")
-                elif not d.get('has_rp'):
-                    st.info("Tidak ada transaksi jual kemarin.")
+                if d['rp_skipped'] or not d.get('has_rp'):
+                    st.info("Loan Existing = 0 → RP tidak diperlukan." if d['rp_skipped'] else "Tidak ada transaksi jual kemarin.")
+                    total_rp_sim  = 0.0
+                    stocks_ar_sim = dict(original_d.get('stocks_op', d['stocks_op']))
                 else:
-                    st.subheader("Atur Nilai RP per Saham")
-                    for rd in original_d.get('rp_detail', d['rp_detail']):
-                        num_key   = f"mnc_rp_{sel_sid}_{rd['stock']}"
-                        basis_key = f"mnc_rp_basis_{sel_sid}_{rd['stock']}"
-                        prev_key  = f"{basis_key}_prev"
+                    rp_ref_rows = original_d.get('rp_detail', d['rp_detail'])
+                    st.caption("Ringkasan saham RP (referensi — lot keluar tetap dihitung penuh)")
+                    df_rp_ref = pd.DataFrame([{
+                        'Saham': rd['stock'], 'Lot Jual': int(rd['lot_sell']),
+                        'Lot OP': int(rd['lot_op']), 'Lot Keluar': int(rd['lot_keluar']),
+                        'Harga': rd['price'], 'RP Min': rd['rp_min'], 'RP Maks': rd['rp_maks'],
+                    } for rd in rp_ref_rows])
+                    st.dataframe(df_rp_ref, use_container_width=True, hide_index=True)
 
-                        col_s1, col_s2, col_s3, col_s4 = st.columns([2,1,1,2])
-                        with col_s1:
-                            st.markdown(f"**{rd['stock']}**  Lot Jual: {int(rd['lot_sell']):,} | Lot OP: {int(rd['lot_op']):,}")
-                        with col_s2:
-                            st.caption("RP Min (tanpa buffer)"); st.write(fmt_rp(rd['rp_min']))
-                        with col_s3:
-                            st.caption("RP Maks (+1% buffer)"); st.write(fmt_rp(rd['rp_maks']))
+                    num_key = f"mnc_rp_total_{sel_sid}"
+                    if num_key not in st.session_state:
+                        st.session_state[num_key] = saved_total if saved_total is not None else float(d['total_rp_maks'])
 
-                        if num_key not in st.session_state:
-                            st.session_state[num_key] = saved_input.get(rd['stock'], float(rd['rp_maks']))
+                    st.caption(f"Total RP Min: {fmt_rp(d['total_rp_min'])}  |  Total RP Maks (+1%): {fmt_rp(d['total_rp_maks'])}")
+                    total_rp_sim = st.number_input(
+                        "Total RP Adjust", step=1_000_000.0, format="%.0f", key=num_key,
+                    )
 
-                        basis = st.radio(
-                            f"Basis RP {rd['stock']}",
-                            ["Tanpa Buffer (Min)", "Dengan Buffer (Maks)", "Bebas"],
-                            key=basis_key, index=1, horizontal=True, label_visibility="collapsed",
-                        )
-                        if st.session_state.get(prev_key) != basis:
-                            if basis == "Tanpa Buffer (Min)":
-                                st.session_state[num_key] = float(rd['rp_min'])
-                            elif basis == "Dengan Buffer (Maks)":
-                                st.session_state[num_key] = float(rd['rp_maks'])
-                            st.session_state[prev_key] = basis
+                    stocks_ar_sim = dict(original_d.get('stocks_op', d['stocks_op']))
+                    for rd in rp_ref_rows:
+                        if rd['lot_keluar'] > 0:
+                            stocks_ar_sim[rd['stock']] = stocks_ar_sim.get(rd['stock'], 0) - rd['lot_keluar']
+                            if stocks_ar_sim.get(rd['stock'], 0) <= 0:
+                                stocks_ar_sim.pop(rd['stock'], None)
 
-                        with col_s4:
-                            rp_val = st.number_input(
-                                f"RP {rd['stock']}", step=1_000_000.0, format="%.0f",
-                                key=num_key, label_visibility="collapsed",
-                            )
-                        rp_inputs[rd['stock']] = {'rp_value': rp_val, 'lot_keluar': rd['lot_keluar']}
-
-                total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
-                stocks_ar_sim = dict(original_d.get('stocks_op', d['stocks_op']))
-                for stock, v in rp_inputs.items():
-                    if v['lot_keluar'] > 0:
-                        stocks_ar_sim[stock] = stocks_ar_sim.get(stock,0) - v['lot_keluar']
-                        if stocks_ar_sim.get(stock,0) <= 0: stocks_ar_sim.pop(stock, None)
                 coll_ar_sim, _ = calc_collateral(stocks_ar_sim, closing_prices, risk_params)
                 loan_ar_sim    = max(original_d.get('loan_existing', d['loan_existing']) - total_rp_sim, 0)
                 rasio_rp_sim   = (loan_ar_sim + d['accrued']) / coll_ar_sim if coll_ar_sim > 0 else None
@@ -1169,12 +1173,15 @@ with tab_mnc:
                             new_checks.append(c)
                     updated['checks'] = new_checks
                     st.session_state['sid_results'][sel_sid] = updated
-                    st.session_state[f'mnc_sim_saved_{sel_sid}'] = {s: v['rp_value'] for s,v in rp_inputs.items()}
+                    st.session_state[f'mnc_sim_saved_total_{sel_sid}'] = total_rp_sim
                     st.rerun()
                 if b2.button("↩️ Reset Nasabah Ini", use_container_width=True, key=f'mnc_reset1_{sel_sid}'):
                     orig = st.session_state.get('sid_results_original', {})
                     if sel_sid in orig:
-                        st.session_state['sid_results'][sel_sid] = copy.deepcopy(orig[sel_sid]); st.rerun()
+                        st.session_state['sid_results'][sel_sid] = copy.deepcopy(orig[sel_sid])
+                        st.session_state.pop(f"mnc_rp_total_{sel_sid}", None)
+                        st.session_state.pop(f"mnc_sim_saved_total_{sel_sid}", None)
+                        st.rerun()
                 if b3.button("🔄 Reset Semua", use_container_width=True, key='mnc_reset_all'):
                     orig = st.session_state.get('sid_results_original', {})
                     if orig:
