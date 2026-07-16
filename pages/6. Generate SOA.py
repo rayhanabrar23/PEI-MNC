@@ -1,5 +1,5 @@
 """
-IDX Securities Financing - Portfolio Tracker (Streamlit)
+Portfolio Tracker (Streamlit)
 
 Alur pakai harian:
   1. Upload RiskParameter (txt), Closing Price (xlsx), list_invoice (csv) hari ini.
@@ -19,7 +19,7 @@ importlib.reload(engine)
 
 
 st.set_page_config(page_title="IDX Porto Tracker", layout="wide")
-st.title("📊 IDX Securities Financing — Portfolio Tracker")
+st.title("Portfolio Tracker")
 st.caption(
     "Upload raw data harian + template hasil kemarin (opsional) → app hitung ulang "
     "Funding / Outstanding / Interest per client, lalu keluarkan Excel baru untuk di-download."
