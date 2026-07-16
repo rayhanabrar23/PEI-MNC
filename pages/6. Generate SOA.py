@@ -18,7 +18,7 @@ importlib.reload(engine)
 
 
 
-st.set_page_config(page_title="IDX Porto Tracker", layout="wide")
+st.set_page_config(page_title="Porto Tracker", layout="wide")
 st.title("Portfolio Tracker")
 st.caption(
     "Upload raw data harian + template hasil kemarin (opsional) → app hitung ulang "
