@@ -438,6 +438,10 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         ws.cell(row=r, column=12, value=f"=SUM(L5:L{end_data_row})").number_format = "#,##0"
         ws.cell(row=r, column=12).font = BOLD
         ws.cell(row=r, column=12).border = BORDER
+
+        ws.cell(row=r, column=14, value=f"=SUM(N5:N{end_data_row})").number_format = "#,##0"
+        ws.cell(row=r, column=14).font = BOLD
+        ws.cell(row=r, column=14).border = BORDER
         
         ws.cell(row=r, column=15, value=f"=SUM(O5:O{end_data_row})").number_format = "#,##0"
         ws.cell(row=r, column=15).font = BOLD
@@ -450,7 +454,7 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         ws.cell(row=r, column=17).font = BOLD
         ws.cell(row=r, column=17).border = BORDER
         
-        ws.cell(row=r, column=18, value=f"=IF(L{r}=0,0,(O{r}+Q{r})/L{r})").number_format = "0.00%"
+        ws.cell(row=r, column=18, value=f"=IF(N{r}=0,0,(N{r}+Q{r})/L{r})").number_format = "0.00%"
         ws.cell(row=r, column=18).font = BOLD
         ws.cell(row=r, column=18).border = BORDER
 
@@ -485,7 +489,7 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         for _, s_row in stock_df.iterrows():
             if round(s_row["VOL"]) != 0:
                 ws.cell(row=r_saham, column=8, value=s_row["STOCK"]).border = BORDER
-                ws.cell(row=r_saham, column=9, value=s_row["HC"] / 100).number_format = "0.0%"
+                ws.cell(row=r_saham, column=9, value=s_row["HC"] / 100).number_format = "0%"
                 ws.cell(row=r_saham, column=9).border = BORDER
                 ws.cell(row=r_saham, column=10, value=s_row["VOL"]).number_format = "#,##0"
                 ws.cell(row=r_saham, column=10).border = BORDER
