@@ -74,6 +74,17 @@ def _read_table(file, prefer_pipe: bool = False) -> pd.DataFrame:
         return pd.read_csv(file, sep="|", dtype=str)
     return pd.read_csv(file, dtype=str)
 
+def parse_plafond(file) -> dict[str, float]:
+    df = _read_table(file)
+    df.columns = [str(c).strip() for c in df.columns]
+    required = {"CID", "PLAFON"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Kolom wajib hilang di data plafon: {sorted(missing)}")
+    df["CID"] = df["CID"].astype(str).str.strip()
+    df["PLAFON"] = pd.to_numeric(df["PLAFON"], errors="coerce").fillna(0.0)
+    return dict(zip(df["CID"], df["PLAFON"]))    
+
 def parse_risk_parameter(file) -> dict:
     df = _read_table(file, prefer_pipe=True)
     df.columns = [c.strip() for c in df.columns]
@@ -294,10 +305,114 @@ HEADER_FILL = PatternFill("solid", fgColor="1F4E78")
 HEADER_FONT = Font(bold=True, color="FFFFFF")
 BOLD = Font(bold=True)
 
-def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
+def _build_compile_sheet(ws, client_results: dict[str, dict], plafond_map: dict[str, float], ratio_threshold: float = 0.65):
+    # --- Judul ---
+    ws.merge_cells("B1:O1")
+    t = ws.cell(row=1, column=2, value="LIST FUNDING PEI (Internal only)")
+    t.font = Font(bold=True, size=13)
+    t.alignment = Alignment(horizontal="center")
+
+    ws.merge_cells("B2:O2")
+    sub = ws.cell(row=2, column=2, value="REGULAR CLIENT")
+    sub.font = BOLD
+    sub.fill = HEADER_FILL
+    sub.font = HEADER_FONT
+    sub.alignment = Alignment(horizontal="center")
+    for col in range(2, 16):
+        ws.cell(row=2, column=col).fill = HEADER_FILL
+        ws.cell(row=2, column=col).border = BORDER
+
+    # --- Header kolom ---
+    headers = ["No.", "CID", "Client", "Original Funding", "Repayment", "Outstanding",
+               "Accrued Interest", "Portofolio", "Ratio", "Note", "", "PLAFOND", "USAGE", "SHORTFALL"]
+    header_row = 4
+    for j, h in enumerate(headers, start=2):
+        c = ws.cell(row=header_row, column=j, value=h)
+        c.font = HEADER_FONT
+        c.fill = HEADER_FILL
+        c.border = BORDER
+        c.alignment = Alignment(horizontal="center", wrap_text=True)
+
+    data_start = header_row + 1
+    r = data_start
+
+    for client_id, res in client_results.items():
+        name = res["name"]
+        sheet_name = re.sub(r"[\\/*?:\[\]]", "_", str(client_id))[:31]
+        plafond = plafond_map.get(str(client_id), 0.0)
+        ref = f"'{sheet_name}'!"
+
+        ws.cell(row=r, column=2, value=r - data_start + 1).border = BORDER               # No.
+        c_cid = ws.cell(row=r, column=3, value=str(client_id)); c_cid.border = BORDER     # CID
+        c_name = ws.cell(row=r, column=4, value=str(name)); c_name.border = BORDER        # Client
+
+        f_fund = f'=IFERROR(SUMIFS(INDIRECT("{ref}M:M"),INDIRECT("{ref}A:A"),C{r},INDIRECT("{ref}M:M"),">0"),0)'
+        f_repay = f'=IFERROR(SUMIFS(INDIRECT("{ref}N:N"),INDIRECT("{ref}A:A"),C{r},INDIRECT("{ref}N:N"),"<0"),0)'
+        f_outst = f'=SUM(E{r}:F{r})'
+        f_int = f'=IFERROR(SUMIF(INDIRECT("{ref}A:A"),C{r},INDIRECT("{ref}Q:Q")),0)'
+        f_port = f'=IFERROR(SUMIF(INDIRECT("{ref}A:A"),C{r},INDIRECT("{ref}L:L")),0)'
+        f_ratio = f'=IF(G{r}=0,0,IFERROR(VLOOKUP(C{r},INDIRECT("{ref}F:R"),13,0),0))'
+
+        for col, formula, fmt in [
+            (5, f_fund, "#,##0"), (6, f_repay, "#,##0"), (7, f_outst, "#,##0"),
+            (8, f_int, "#,##0"), (9, f_port, "#,##0"), (10, f_ratio, "0.00%"),
+        ]:
+            cell = ws.cell(row=r, column=col, value=formula)
+            cell.number_format = fmt
+            cell.border = BORDER
+
+        ws.cell(row=r, column=11).border = BORDER  # Note (isi manual)
+        ws.cell(row=r, column=12).border = BORDER  # spacer
+
+        c_plaf = ws.cell(row=r, column=13, value=plafond)
+        c_plaf.number_format = "#,##0"
+        c_plaf.border = BORDER
+
+        f_usage = f'=IF(M{r}=0,0,(H{r}+G{r})/M{r})'
+        c_use = ws.cell(row=r, column=14, value=f_usage)
+        c_use.number_format = "0.00%"
+        c_use.border = BORDER
+
+        f_short = f'=IF(J{r}<{ratio_threshold},0,G{r}+H{r}-{ratio_threshold}*I{r})'
+        c_short = ws.cell(row=r, column=15, value=f_short)
+        c_short.number_format = "#,##0"
+        c_short.border = BORDER
+
+        r += 1
+
+    last_row = r - 1
+
+    # --- Baris TOTAL ---
+    ws.cell(row=r, column=4, value="TOTAL").font = BOLD
+    for col in (5, 6, 7, 8, 9, 13, 15):
+        letter = get_column_letter(col)
+        cell = ws.cell(row=r, column=col, value=f"=SUM({letter}{data_start}:{letter}{last_row})")
+        cell.font = BOLD
+        cell.border = BORDER
+        cell.number_format = "#,##0"
+    c_use_tot = ws.cell(row=r, column=14, value=f"=IF(M{r}=0,0,(H{r}+G{r})/M{r})")
+    c_use_tot.font = BOLD
+    c_use_tot.border = BORDER
+    c_use_tot.number_format = "0.00%"
+
+    # --- Formatting ---
+    widths = {2: 6, 3: 12, 4: 26, 5: 16, 6: 16, 7: 16, 8: 16, 9: 16, 10: 10, 11: 14, 12: 4, 13: 16, 14: 12, 15: 16}
+    for col, w in widths.items():
+        ws.column_dimensions[get_column_letter(col)].width = w
+
+    ws.freeze_panes = "B5"
+
+def write_workbook(
+    client_results: dict[str, dict], 
+    as_of_date,
+    plafond_map: dict[str, float] | None = None,
+    ratio_threshold: float = 065,
+) -> bytes:
     wb = Workbook()
     wb.remove(wb.active)
 
+    compile_ws = wb.create_sheet("COMPILE",0)
+    
     for client_id, res in client_results.items():
         df = res["df"]
         name = res["name"]
@@ -582,6 +697,8 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         # Bekukan baris header supaya tetap terlihat saat scroll
         ws.freeze_panes = "A5"
 
+    _build_compile_sheet(compile_ws, client_result, plafond_map or {}, ratio_threshold)
+    
     bio = io.BytesIO()
     wb.save(bio)
     return bio.getvalue()
