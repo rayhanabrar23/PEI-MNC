@@ -179,7 +179,12 @@ def parse_netting_invoice(uploaded_file):
         netting     : {sid: {stock: {buy_lot, sell_lot, buy_value, sell_value, net_lot, net_value}}}
         cid_to_sid  : {cid: sid} — mapping langsung dari file invoice
     """
-    df = find_and_rename(pd.read_excel(uploaded_file, dtype=str))
+    fname = getattr(uploaded_file, 'name', '') or ''
+    if fname.lower().endswith('.csv'):
+        df = pd.read_csv(uploaded_file, dtype=str)
+    else:
+        df = pd.read_excel(uploaded_file, dtype=str)
+    df = find_and_rename(df)
     for req in ('stock_key', 'sid_key', 'cid_key', 'bors', 'tot_vol'):
         if req not in df.columns:
             raise ValueError(f"Kolom '{req}' tidak ditemukan di file Netting Invoice.")
@@ -259,8 +264,8 @@ with col2:
 with col3:
     file_op     = st.file_uploader("3. Outstanding Position (.txt)", type=['txt'], key='shared_op')
 with col4:
-    file_netinv = st.file_uploader("4. Netting Invoice / List of Invoice (.xls/.xlsx)",
-                                    type=['xls', 'xlsx'], key='shared_netinv')
+    file_netinv = st.file_uploader("4. Netting Invoice / List of Invoice (.csv/.xls/.xlsx)",
+                                    type=['csv', 'xls', 'xlsx'], key='shared_netinv')
 
 shared_ready = all([file_cp, file_rp, file_op, file_netinv])
 
