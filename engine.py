@@ -1,6 +1,6 @@
 """
 engine.py
-Core logic for IDX Securities Financing Portfolio Tracker with Dynamic Excel Formulas.
+Core logic for Financing Portfolio Tracker with Dynamic Excel Formulas.
 """
 
 from __future__ import annotations
