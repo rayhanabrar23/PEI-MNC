@@ -37,6 +37,10 @@ with st.sidebar:
     st.caption("Kosongkan kalau ini hari pertama / client baru.")
     template_file = st.file_uploader("Template sebelumnya (.xlsx)", type=["xlsx"])
 
+    st.header("3. Data Plafon (opsional)")
+    st.caption("Kosongkan kalau sheet COMPILE tidak perlu kolom PLAFOND/USAGE/SHORTFALL.")
+    plafond_file = st.file_uploader("Data Plafon (.xlsx)", type=["xlsx", "xls"])
+
     st.header("3. Tanggal Acuan (as of)")
     as_of = st.date_input("Tanggal untuk hitung bunga berjalan", value=date.today())
 
@@ -53,7 +57,8 @@ if process_btn:
         raw_tx = engine.parse_list_invoice(invoice_file, hc_map, price_map)
         new_tx = engine.net_transactions(raw_tx)
         old_history = engine.parse_previous_template(template_file) if template_file else {}
-
+        plafond_map = engine.parse_plafond(plafond_file) if plafond_file else {}
+      
         all_client_ids = sorted(set(new_tx["CLIENT_ID"]) | set(old_history.keys()))
 
         merged_by_client = {}
@@ -70,6 +75,7 @@ if process_btn:
             "price_map": price_map,
             "merged_by_client": merged_by_client,
             "as_of": as_of,
+            "plafond_map": plafond_map,
         }
         st.success(
             f"Berhasil diproses: {len(merged_by_client)} client. "
@@ -85,7 +91,8 @@ if st.session_state.processed:
     hc_map = data["hc_map"]
     price_map = data["price_map"]
     as_of = data["as_of"]
-
+    plafond_map = data.get("plafond_map", {})
+  
     st.divider()
     st.subheader("Review & Edit Tranche (opsional)")
     st.caption(
@@ -155,7 +162,7 @@ if st.session_state.processed:
                 "total_interest": total_interest,
             }
 
-        excel_bytes = engine.write_workbook(client_results, as_of)
+        excel_bytes = engine.write_workbook(client_results, as_of, plafond_map=plafond_map, ratio_threshold=0.65)
         fname = f"DATA_PORTO_{pd.Timestamp(as_of).strftime('%d%m%y')}.xlsx"
         st.download_button(
             "⬇️ Download Excel Hasil Hari Ini",
