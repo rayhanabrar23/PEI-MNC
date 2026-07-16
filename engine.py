@@ -461,9 +461,22 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         # 2. Tabel Breakdown Funding dan Saham (Disusun berdampingan sejajar kolom)
         r_recap = r + 3
         
-        # Judul Tabel
-        ws.cell(row=r_recap, column=8, value="COLLATERAL SAHAM (posisi saat ini)").font = BOLD
-        ws.cell(row=r_recap, column=14, value="PELUNASAN FUNDING").font = BOLD
+        # Judul Tabel — merged, navy fill, center, seperti header utama
+        ws.merge_cells(start_row=r_recap, start_column=8, end_row=r_recap, end_column=12)
+        for col in range(8, 13):
+            ws.cell(row=r_recap, column=col).fill = HEADER_FILL
+            ws.cell(row=r_recap, column=col).border = BORDER
+        c_title1 = ws.cell(row=r_recap, column=8, value="COLLATERAL SAHAM (posisi saat ini)")
+        c_title1.font = HEADER_FONT
+        c_title1.alignment = Alignment(horizontal="center")
+        
+        ws.merge_cells(start_row=r_recap, start_column=14, end_row=r_recap, end_column=17)
+        for col in range(14, 18):
+            ws.cell(row=r_recap, column=col).fill = HEADER_FILL
+            ws.cell(row=r_recap, column=col).border = BORDER
+        c_title2 = ws.cell(row=r_recap, column=14, value="PELUNASAN FUNDING")
+        c_title2.font = HEADER_FONT
+        c_title2.alignment = Alignment(horizontal="center")
         
         # Sub-Headers Tabel
         r_recap += 1
@@ -482,22 +495,36 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
         # Start Isi Data
         r_data_start = r_recap + 1
         
-        # - Cetak Baris Saham
         r_saham = r_data_start
-        stock_df = df.groupby("STOCK").agg({"HC": "first", "VOL": "sum", "PRICE": "first"}).reset_index()
-        stock_df["COLLATERAL_IDR"] = stock_df["VOL"] * stock_df["PRICE"] * (100 - stock_df["HC"]) / 100
-        for _, s_row in stock_df.iterrows():
-            if round(s_row["VOL"]) != 0:
-                ws.cell(row=r_saham, column=8, value=s_row["STOCK"]).border = BORDER
-                ws.cell(row=r_saham, column=9, value=s_row["HC"] / 100).number_format = "0%"
-                ws.cell(row=r_saham, column=9).border = BORDER
-                ws.cell(row=r_saham, column=10, value=s_row["VOL"]).number_format = "#,##0"
-                ws.cell(row=r_saham, column=10).border = BORDER
-                ws.cell(row=r_saham, column=11, value=s_row["PRICE"]).number_format = "#,##0"
-                ws.cell(row=r_saham, column=11).border = BORDER
-                ws.cell(row=r_saham, column=12, value=s_row["COLLATERAL_IDR"]).number_format = "#,##0"
-                ws.cell(row=r_saham, column=12).border = BORDER
-                r_saham += 1
+        stock_list = sorted({s for s in df["STOCK"] if round(df.loc[df["STOCK"] == s, "VOL"].sum()) != 0})
+        for stock in stock_list:
+            ws.cell(row=r_saham, column=8, value=stock).border = BORDER
+        
+            # HC: ambil HC transaksi pertama utk stock ini dari tabel data utama
+            f_hc = f'=INDEX($I${start_row}:$I${end_data_row},MATCH(H{r_saham},$H${start_row}:$H${end_data_row},0))/100'
+            c_hc = ws.cell(row=r_saham, column=9, value=f_hc)
+            c_hc.number_format = "0%"
+            c_hc.border = BORDER
+        
+            # VOL: total volume stock ini (net beli-jual) dari tabel data utama
+            f_vol = f'=SUMIF($H${start_row}:$H${end_data_row},H{r_saham},$J${start_row}:$J${end_data_row})'
+            c_vol = ws.cell(row=r_saham, column=10, value=f_vol)
+            c_vol.number_format = "#,##0"
+            c_vol.border = BORDER
+        
+            # PRICE: ambil price transaksi pertama utk stock ini
+            f_price = f'=INDEX($K${start_row}:$K${end_data_row},MATCH(H{r_saham},$H${start_row}:$H${end_data_row},0))'
+            c_price = ws.cell(row=r_saham, column=11, value=f_price)
+            c_price.number_format = "#,##0"
+            c_price.border = BORDER
+        
+            # COLLATERAL (IDR-HC): hitung dari VOL x PRICE x (1-HC) baris recap sendiri
+            f_coll = f"=J{r_saham}*K{r_saham}*(1-I{r_saham})"
+            c_coll = ws.cell(row=r_saham, column=12, value=f_coll)
+            c_coll.number_format = "#,##0"
+            c_coll.border = BORDER
+        
+            r_saham += 1
 
         # - Baris Total PORTOFOLIO (sum Collateral IDR-HC)
         last_saham_row = r_saham - 1 if r_saham > r_data_start else r_data_start
