@@ -116,7 +116,7 @@ def parse_list_invoice(file, hc_map: dict, price_map: dict) -> pd.DataFrame:
     price_fallback = pd.to_numeric(df["rate"], errors="coerce")
     out["PRICE"] = price_from_file.fillna(price_fallback)
     
-    out["COLLATERAL_IDR_HC"] = 0
+    out["COLLATERAL_IDR_HC"] = 0.0
     out["AMOUNT_TRX"] = pd.to_numeric(df["amt_done"], errors="coerce").fillna(0.0) * sign
     out["TRANCHE"] = ""
     out["FUNDING"] = 0.0
