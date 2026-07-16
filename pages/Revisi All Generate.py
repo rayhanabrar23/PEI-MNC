@@ -554,18 +554,35 @@ with tab_pei:
                 rp_inputs = {}
                 for rd in d['rp_detail']:
                     if not rd['ada_di_op']: continue
+                    num_key   = f"pei_rp_{sel}_{rd['stock']}"
+                    basis_key = f"pei_rp_basis_{sel}_{rd['stock']}"
+                    prev_key  = f"{basis_key}_prev"
+
                     c_s1, c_s2, c_s3, c_s4 = st.columns([2,1,1,2])
                     with c_s1:
                         st.markdown(f"**{rd['stock']}** Lot Jual: {int(rd['lot_sell']):,} | Lot OP: {int(rd['lot_op']):,}")
                     with c_s2:
-                        st.caption("RP Min"); st.write(fmt_rp(rd['rp_min']))
+                        st.caption("RP Min (tanpa buffer)"); st.write(fmt_rp(rd['rp_min']))
                     with c_s3:
-                        st.caption("RP Maks"); st.write(fmt_rp(rd['rp_maks']))
+                        st.caption("RP Maks (+1% buffer)"); st.write(fmt_rp(rd['rp_maks']))
+
+                    basis = st.radio(
+                        f"Basis RP {rd['stock']}",
+                        ["Tanpa Buffer (Min)", "Dengan Buffer (Maks)", "Bebas"],
+                        key=basis_key, index=1, horizontal=True, label_visibility="collapsed",
+                    )
+                    if st.session_state.get(prev_key) != basis:
+                        if basis == "Tanpa Buffer (Min)":
+                            st.session_state[num_key] = float(rd['rp_min'])
+                        elif basis == "Dengan Buffer (Maks)":
+                            st.session_state[num_key] = float(rd['rp_maks'])
+                        st.session_state[prev_key] = basis
+
                     with c_s4:
-                        rp_val = st.number_input(f"RP {rd['stock']}",
-                            min_value=float(rd['rp_min']), max_value=float(rd['rp_maks']),
-                            value=float(rd['rp_maks']), step=1_000_000.0, format="%.0f",
-                            key=f"pei_rp_{sel}_{rd['stock']}", label_visibility="collapsed")
+                        rp_val = st.number_input(
+                            f"RP {rd['stock']}", step=1_000_000.0, format="%.0f",
+                            key=num_key, label_visibility="collapsed",
+                        )
                     rp_inputs[rd['stock']] = {'rp_value': rp_val, 'lot_keluar': rd['lot_keluar']}
 
                 total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
@@ -1041,19 +1058,38 @@ with tab_mnc:
                 else:
                     st.subheader("Atur Nilai RP per Saham")
                     for rd in original_d.get('rp_detail', d['rp_detail']):
+                        num_key   = f"mnc_rp_{sel_sid}_{rd['stock']}"
+                        basis_key = f"mnc_rp_basis_{sel_sid}_{rd['stock']}"
+                        prev_key  = f"{basis_key}_prev"
+
                         col_s1, col_s2, col_s3, col_s4 = st.columns([2,1,1,2])
                         with col_s1:
                             st.markdown(f"**{rd['stock']}**  Lot Jual: {int(rd['lot_sell']):,} | Lot OP: {int(rd['lot_op']):,}")
                         with col_s2:
-                            st.caption("RP Min"); st.write(fmt_rp(rd['rp_min']))
+                            st.caption("RP Min (tanpa buffer)"); st.write(fmt_rp(rd['rp_min']))
                         with col_s3:
-                            st.caption("RP Maks"); st.write(fmt_rp(rd['rp_maks']))
+                            st.caption("RP Maks (+1% buffer)"); st.write(fmt_rp(rd['rp_maks']))
+
+                        if num_key not in st.session_state:
+                            st.session_state[num_key] = saved_input.get(rd['stock'], float(rd['rp_maks']))
+
+                        basis = st.radio(
+                            f"Basis RP {rd['stock']}",
+                            ["Tanpa Buffer (Min)", "Dengan Buffer (Maks)", "Bebas"],
+                            key=basis_key, index=1, horizontal=True, label_visibility="collapsed",
+                        )
+                        if st.session_state.get(prev_key) != basis:
+                            if basis == "Tanpa Buffer (Min)":
+                                st.session_state[num_key] = float(rd['rp_min'])
+                            elif basis == "Dengan Buffer (Maks)":
+                                st.session_state[num_key] = float(rd['rp_maks'])
+                            st.session_state[prev_key] = basis
+
                         with col_s4:
-                            rp_val = st.number_input(f"RP {rd['stock']}",
-                                min_value=float(rd['rp_min']), max_value=float(rd['rp_maks']),
-                                value=saved_input.get(rd['stock'], float(rd['rp_maks'])),
-                                step=1_000_000.0, format="%.0f",
-                                key=f"mnc_rp_{sel_sid}_{rd['stock']}", label_visibility="collapsed")
+                            rp_val = st.number_input(
+                                f"RP {rd['stock']}", step=1_000_000.0, format="%.0f",
+                                key=num_key, label_visibility="collapsed",
+                            )
                         rp_inputs[rd['stock']] = {'rp_value': rp_val, 'lot_keluar': rd['lot_keluar']}
 
                 total_rp_sim = sum(v['rp_value'] for v in rp_inputs.values())
