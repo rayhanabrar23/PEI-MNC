@@ -204,7 +204,7 @@ def net_transactions(df: pd.DataFrame) -> pd.DataFrame:
             "CLIENT_ID": cid, "NAME": g["NAME"].iloc[0], "B_S": b_s,
             "TRX_DATE": trx_date, "DUE_DATE": due_date, "MATURITY": "",
             "ACTIVITY": "TRX", "STOCK": stock, "HC": hc, "VOL": net_vol, "PRICE": price,
-            "COLLATERAL_IDR_HC": 0.0, "AMOUNT_TRX": net_amt, "TRANCHE": "",
+            "COLLATERAL_IDR_HC": 0%, "AMOUNT_TRX": net_amt, "TRANCHE": "",
             "FUNDING": 0.0, "OUTSTANDING": 0.0, "INTEREST": 0.0, "RATIO": "", "INV_NO": inv_no
         })
     if not out_rows:
