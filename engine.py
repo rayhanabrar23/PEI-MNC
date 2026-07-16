@@ -406,7 +406,7 @@ def write_workbook(
     client_results: dict[str, dict], 
     as_of_date,
     plafond_map: dict[str, float] | None = None,
-    ratio_threshold: float = 065,
+    ratio_threshold: float = 0.65,
 ) -> bytes:
     wb = Workbook()
     wb.remove(wb.active)
@@ -697,7 +697,7 @@ def write_workbook(
         # Bekukan baris header supaya tetap terlihat saat scroll
         ws.freeze_panes = "A5"
 
-    _build_compile_sheet(compile_ws, client_result, plafond_map or {}, ratio_threshold)
+    _build_compile_sheet(compile_ws, client_results, plafond_map or {}, ratio_threshold)
     
     bio = io.BytesIO()
     wb.save(bio)
