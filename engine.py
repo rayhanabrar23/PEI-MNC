@@ -384,10 +384,28 @@ def write_workbook(client_results: dict[str, dict], as_of_date) -> bytes:
             set_cell(r, 16, row["TRANCHE"])
 
             # 17. INTEREST (Kolom Q / 17)
+            # Guard: kalau r adalah baris data TERAKHIR di sheet, range MATCH($P{r+1}:$P{end_data_row})
+            # menjadi terbalik (start row > end row) karena end_data_row == r itu sendiri.
+            # Excel menormalisasi range terbalik ini jadi $P{r}:$P{r+1}, yang keliru memasukkan
+            # baris r sendiri sebagai kandidat MATCH -> ketemu "diri sendiri" -> INDEX ambil sel
+            # kosong -> (0 - tanggal) jadi angka negatif raksasa -> interest meledak.
+            # Fix: kalau r == end_data_row, langsung pakai term fallback (tidak ada baris tranche
+            # berikutnya untuk dicari, IFERROR pun sejatinya akan gagal ke situ juga).
+            if r < end_data_row:
+                interest_term = (
+                    f'IFERROR((INDEX($E{r+1}:$E${summary_row},MATCH(P{r},$P{r+1}:$P${end_data_row},0),1)-E{r})'
+                    f'*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,'
+                    f'($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)'
+                )
+            else:
+                interest_term = (
+                    f'($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360'
+                )
+            
             formula_interest = (
                 f'=IF($E${summary_row}-E{r}<0,0,IF(OR(SUMIFS($Q$4:Q{r-1},$A$4:A{r-1},A{r},$P$4:P{r-1},P{r})>ABS(N{r}),M{r}=N{r}),'
-                f'IFERROR((INDEX($E{r+1}:$E${summary_row},MATCH(P{r},$P{r+1}:$P${end_data_row},0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360),'
-                f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+IFERROR((INDEX($E{r+1}:$E${summary_row},MATCH(P{r},$P{r+1}:$P${end_data_row},0),1)-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360,($E${summary_row}-E{r})*SUMIFS($N$5:N{r},$A$5:$A{r},A{r},$P$5:$P{r},P{r})*9.5%/360)))+SUM(R{r})'
+                f'{interest_term},'
+                f'-SUMIFS($Q$4:Q{r-1},A$4:A{r-1},A{r},$P$4:P{r-1},P{r})+{interest_term}))+SUM(R{r})'
             )
             set_cell(r, 17, formula_interest, "#,##0")
 
