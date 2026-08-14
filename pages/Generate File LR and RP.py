@@ -1329,23 +1329,23 @@ with tab_mnc:
                 s1, s2 = [], []
                 for sid, data in sid_results.items():
                     if not lolos_rp(data): continue
-                    if data['total_rp_maks'] > 0:
-                        s1.append({"Participant Code":"EP","SID Client":sid,"Repayment Value":data['total_rp_maks']})
+                    if data['total_rp_maks'] <= 0: continue  # RP tidak diperlukan -> tidak ada saham yang keluar
+                    s1.append({"Participant Code":"EP","SID Client":sid,"Repayment Value":data['total_rp_maks']})
                     for rd in data['rp_detail']:
                         if rd['lot_keluar'] > 0:
                             s2.append({"SID Client":sid,"Stock Code":rd['stock'],"Quantity":int(rd['lot_keluar'])})
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine="openpyxl") as w:
-                    pd.DataFrame(s1).to_excel(w, sheet_name="Repayment Proceed", index=False)
-                    pd.DataFrame(s2).to_excel(w, sheet_name="Detail Collateral",  index=False)
+                    pd.DataFrame(s1).to_excel(w, sheet_name="Repayment Direct", index=False)
+                    pd.DataFrame(s2).to_excel(w, sheet_name="Stock",  index=False)
                 buf.seek(0); return buf
 
             def gen_lr_excel():
                 s1, s2 = [], []
                 for sid, data in sid_results.items():
                     if not lolos_lr(data): continue
-                    if data['max_lr_final'] > 0:
-                        s1.append({"Participant Code":"EP","SID Client":sid,"Loan Value":data['max_lr_final']})
+                    if data['max_lr_final'] <= 0: continue  # LR tidak cair -> tidak ada saham yang masuk
+                    s1.append({"Participant Code":"EP","SID Client":sid,"Loan Value":data['max_lr_final']})
                     stocks_lr = data.get('stocks_after_lr', {})
                     stocks_rp = data.get('stocks_after_rp', {})
                     for stock, lot_lr in stocks_lr.items():
@@ -1354,8 +1354,8 @@ with tab_mnc:
                             s2.append({"SID Client":sid,"Stock Code":stock,"Quantity":int(lot_beli)})
                 buf = io.BytesIO()
                 with pd.ExcelWriter(buf, engine="openpyxl") as w:
-                    pd.DataFrame(s1).to_excel(w, sheet_name="Loan Request",      index=False)
-                    pd.DataFrame(s2).to_excel(w, sheet_name="Detail Collateral", index=False)
+                    pd.DataFrame(s1).to_excel(w, sheet_name="Loan",      index=False)
+                    pd.DataFrame(s2).to_excel(w, sheet_name="Stock", index=False)
                 buf.seek(0); return buf
 
             e1, e2 = st.columns(2)
