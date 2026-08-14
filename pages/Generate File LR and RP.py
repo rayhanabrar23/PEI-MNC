@@ -13,12 +13,12 @@ st.title("📊 PEI Tools — TRX PEI & Validasi MNC")
 for key in [
     'shared_closing_prices', 'shared_risk_params', 'shared_risk_avail_qty',
     'shared_netting', 'shared_net_buy', 'shared_net_sell', 'shared_cid_to_sid',
-    'shared_op_data',
+    'shared_op_data', 'shared_cl_data', 'shared_cl_value_date',
     # TRX PEI
     'pei_results', 'pei_results_original',
     # Validasi MNC
     'df_sell_edited', 'sid_results', 'global_result', 'df_buy',
-    'df_buy_adjusted', 'cl_data',
+    'df_buy_adjusted',
 ]:
     if key not in st.session_state:
         st.session_state[key] = None
@@ -187,6 +187,28 @@ def parse_op_file(content: str) -> dict:
                 result[sid]["stocks"][stock] = result[sid]["stocks"].get(stock, 0) + vol
     return result
 
+def parse_credit_limit_file(content: str):
+    """
+    Parse file Credit Limit (.txt, pipe-delimited).
+    Kolom: Value Date|Broker Code|SID|Client Name|Client Credit Limit|Used Limit|Available Limit
+    Ini SATU-SATUNYA sumber Available Limit yang valid — field 'available_limit' di file OP
+    selalu 0 (bukan bug data, memang formatnya begitu), jadi jangan dipakai.
+    """
+    result = {}
+    value_date = None
+    for i, line in enumerate(content.strip().splitlines()):
+        line  = line.strip()
+        if not line: continue
+        parts = line.split("|")
+        if i == 0 and parts[0].strip().lower() == "value date": continue
+        if len(parts) < 7: continue
+        sid = parts[2].strip()
+        try: avail_limit = float(parts[6].replace(",",""))
+        except: avail_limit = 0.0
+        if value_date is None: value_date = parts[0].strip()
+        result[sid] = {"available_limit": avail_limit, "name": parts[3].strip(), "value_date": parts[0].strip()}
+    return result, value_date
+
 def parse_netting_invoice(uploaded_file):
     """
     Parse file Netting Invoice (list of invoice, format .xls/.xlsx/.csv).
@@ -277,7 +299,7 @@ def split_netting(netting: dict):
 st.subheader("📂 Upload File Bersama")
 st.caption("File berikut digunakan oleh kedua modul. Upload sekali, dipakai di kedua tab.")
 
-col1, col2, col3, col4 = st.columns(4)
+col1, col2, col3, col4, col5 = st.columns(5)
 with col1:
     file_cp     = st.file_uploader("1. Closing Price (.xlsx)", type=['xlsx'], key='shared_cp')
 with col2:
@@ -287,11 +309,13 @@ with col3:
 with col4:
     file_netinv = st.file_uploader("4. Netting Invoice / List of Invoice (.csv/.xls/.xlsx)",
                                     type=['csv', 'xls', 'xlsx'], key='shared_netinv')
+with col5:
+    file_cl     = st.file_uploader("5. Credit Limit (.txt)", type=['txt'], key='shared_cl')
 
-shared_ready = all([file_cp, file_rp, file_op, file_netinv])
+shared_ready = all([file_cp, file_rp, file_op, file_netinv, file_cl])
 
 if shared_ready:
-    file_sig = f"{file_cp.name}_{file_rp.name}_{file_op.name}_{file_netinv.name}"
+    file_sig = f"{file_cp.name}_{file_rp.name}_{file_op.name}_{file_netinv.name}_{file_cl.name}"
     if st.session_state.get('_shared_file_sig') != file_sig:
         with st.spinner("⚙️ Memuat file bersama..."):
             st.session_state['shared_closing_prices'] = load_closing_price(file_cp)
@@ -307,12 +331,23 @@ if shared_ready:
             st.session_state['shared_net_buy']    = net_buy
             st.session_state['shared_net_sell']   = net_sell
             st.session_state['shared_cid_to_sid'] = cid_to_sid
+            cl_content = file_cl.read().decode("utf-8", errors="replace")
+            file_cl.seek(0)
+            cl_data, cl_vdate = parse_credit_limit_file(cl_content)
+            st.session_state['shared_cl_data']       = cl_data
+            st.session_state['shared_cl_value_date'] = cl_vdate
             st.session_state['_shared_file_sig']  = file_sig
         st.success(f"✅ File bersama dimuat — {len(st.session_state['shared_op_data'])} SID di OP, "
                    f"{len(st.session_state['shared_closing_prices'])} harga saham, "
-                   f"{len(st.session_state['shared_netting'])} SID di Netting Invoice.")
+                   f"{len(st.session_state['shared_netting'])} SID di Netting Invoice, "
+                   f"{len(st.session_state['shared_cl_data'])} SID di Credit Limit.")
+    cl_vdate = st.session_state.get('shared_cl_value_date')
+    if cl_vdate:
+        today_check = datetime.today().strftime("%Y/%m/%d")
+        if cl_vdate != today_check:
+            st.warning(f"⚠️ Value Date Credit Limit: **{cl_vdate}** (hari ini: {today_check})")
 else:
-    st.info("⬆️ Upload keempat file bersama di atas untuk mengaktifkan kedua modul.")
+    st.info("⬆️ Upload kelima file bersama di atas untuk mengaktifkan kedua modul.")
 
 st.divider()
 
@@ -329,7 +364,7 @@ with tab_pei:
     st.info("Sistem ini memproses transaksi nasabah PEI: **Repayment (RP)** → **Loan Request (LR)**")
 
     st.subheader("📂 File Tambahan (TRX PEI)")
-    st.caption("Netting Invoice sekarang dipakai bersama (upload di bagian atas). Di sini cukup SID Client untuk menentukan nasabah PEI.")
+    st.caption("Netting Invoice & Credit Limit sekarang dipakai bersama (upload di bagian atas). Di sini cukup SID Client untuk menentukan nasabah PEI.")
     file_sid_client = st.file_uploader("A. SID Client (.xlsx)", type=['xlsx'], key='pei_sid')
 
     pei_ready = shared_ready and file_sid_client
@@ -343,6 +378,7 @@ with tab_pei:
                     op_data         = st.session_state['shared_op_data']
                     net_buy_by_sid  = st.session_state['shared_net_buy']
                     net_sell_by_sid = st.session_state['shared_net_sell']
+                    cl_data         = st.session_state['shared_cl_data']
 
                     df_sid = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
                     df_sid['cid_key']   = df_sid['cid_key'].astype(str).str.strip()
@@ -362,7 +398,6 @@ with tab_pei:
                     op_loan   = {sid: {
                         'loan_existing': d['loan_existing'],
                         'accrued_interest': d['accrued_interest'],
-                        'available_limit': d['available_limit'],
                         'name': d['name'],
                     } for sid, d in op_data.items()}
 
@@ -381,11 +416,12 @@ with tab_pei:
                             pei_sids.add(sid)
 
                     for sid in pei_sids:
-                        loan_info = op_loan.get(sid, {'loan_existing':0,'accrued_interest':0,'available_limit':0,'name':sid})
+                        loan_info = op_loan.get(sid, {'loan_existing':0,'accrued_interest':0,'name':sid})
                         stocks_op = op_stocks.get(sid, {})
                         loan_ex   = loan_info['loan_existing']
                         accrued   = loan_info['accrued_interest']
-                        avail_lim = loan_info['available_limit']
+                        # Available Limit HARUS dari file Credit Limit — field di OP selalu 0.
+                        avail_lim = cl_data.get(sid, {}).get('available_limit', 0.0)
                         name      = loan_info['name']
 
                         sell_stocks = sell_reg_by_sid.get(sid, {})
@@ -468,7 +504,7 @@ with tab_pei:
                 st.error(f"❌ Gagal: {e}")
                 st.exception(e)
     else:
-        st.info("⬆️ Lengkapi file bersama (termasuk Netting Invoice) + SID Client untuk memproses TRX PEI.")
+        st.info("⬆️ Lengkapi file bersama (termasuk Netting Invoice & Credit Limit) + SID Client untuk memproses TRX PEI.")
 
     # ── TAMPILKAN HASIL TRX PEI ───────────────────────────────
     if st.session_state.get('pei_results'):
@@ -738,31 +774,12 @@ with tab_mnc:
     st.info("Sistem Validasi Repayment & Loan Request nasabah PEI: **RP dulu → LR setelahnya**")
 
     st.subheader("📂 File Tambahan (Validasi MNC)")
-    mc1, mc2 = st.columns(2)
-    with mc1:
-        hasil_file = st.file_uploader("A. Hasil MNC (.xlsx)", type=["xlsx"], key='mnc_hasil')
-    with mc2:
-        cl_file    = st.file_uploader("B. Credit Limit (.txt)", type=["txt"], key='mnc_cl')
+    st.caption("Credit Limit sekarang dipakai bersama (upload di bagian atas). Di sini cukup Hasil MNC.")
+    hasil_file = st.file_uploader("A. Hasil MNC (.xlsx)", type=["xlsx"], key='mnc_hasil')
 
-    mnc_ready = shared_ready and hasil_file and cl_file
+    mnc_ready = shared_ready and hasil_file
 
     # ── HELPERS VALIDASI MNC ──────────────────────────────────
-    def parse_credit_limit_file(content: str):
-        result = {}
-        value_date = None
-        for i, line in enumerate(content.strip().splitlines()):
-            line  = line.strip()
-            if not line: continue
-            parts = line.split("|")
-            if i == 0 and parts[0].strip().lower() == "value date": continue
-            if len(parts) < 7: continue
-            sid = parts[2].strip()
-            try: avail_limit = float(parts[6].replace(",",""))
-            except: avail_limit = 0.0
-            if value_date is None: value_date = parts[0].strip()
-            result[sid] = {"available_limit": avail_limit, "name": parts[3].strip(), "value_date": parts[0].strip()}
-        return result, value_date
-
     def load_hasil_mnc(uploaded_file):
         xls = pd.ExcelFile(uploaded_file)
         if "Repayment (RP)" in xls.sheet_names:
@@ -790,7 +807,7 @@ with tab_mnc:
 
     def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
                           closing_prices, risk_params, df_sell, df_buy, risk_avq):
-        op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"available_limit":0,"name":sid,"stocks":{}})
+        op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"name":sid,"stocks":{}})
         cl  = cl_data.get(sid, {"available_limit":0,"name":sid})
         loan_ex   = op["loan_existing"]
         accrued   = op["accrued_interest"]
@@ -956,13 +973,7 @@ with tab_mnc:
                 op_data        = st.session_state['shared_op_data']
                 margin_buy     = st.session_state['shared_net_buy']    # net beli hasil Netting Invoice
                 sell_regular   = st.session_state['shared_net_sell']   # net jual hasil Netting Invoice
-
-                cl_content = cl_file.read().decode("utf-8", errors="replace")
-                cl_data, vdate = parse_credit_limit_file(cl_content)
-                if vdate:
-                    today_check = datetime.today().strftime("%Y/%m/%d")
-                    if vdate != today_check:
-                        st.warning(f"⚠️ Value Date Credit Limit: **{vdate}** (hari ini: {today_check})")
+                cl_data        = st.session_state['shared_cl_data']    # Available Limit — dari file Credit Limit bersama
 
                 risk_avq = st.session_state['shared_risk_avail_qty']
 
@@ -987,14 +998,13 @@ with tab_mnc:
 
             st.session_state.update({
                 'sid_results': sid_results, 'global_result': global_result,
-                'cl_data': cl_data,
                 'df_sell_edited': df_sell.copy(), 'df_buy': df_buy.copy(),
                 'df_buy_adjusted': df_buy_raw.copy(),
                 'sid_results_original': copy.deepcopy(sid_results),
             })
             st.success("✅ Validasi Selesai!")
     else:
-        st.info("⬆️ Lengkapi file bersama + Hasil MNC + Credit Limit untuk menjalankan validasi.")
+        st.info("⬆️ Lengkapi file bersama (termasuk Credit Limit) + Hasil MNC untuk menjalankan validasi.")
 
     # ── TAMPILKAN HASIL VALIDASI MNC ─────────────────────────
     if st.session_state.get('sid_results'):
@@ -1005,7 +1015,7 @@ with tab_mnc:
         margin_buy    = st.session_state['shared_net_buy']
         sell_regular  = st.session_state['shared_net_sell']
         op_data       = st.session_state['shared_op_data']
-        cl_data       = st.session_state.get('cl_data', {})
+        cl_data       = st.session_state.get('shared_cl_data', {})
 
         n_rp     = sum(1 for v in sid_results.values() if v.get('has_rp'))
         n_lr     = sum(1 for v in sid_results.values() if v.get('has_lr'))
