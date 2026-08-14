@@ -28,7 +28,7 @@ if 'clamped_warnings' not in st.session_state:
 if 'sid_results_original' not in st.session_state:
     st.session_state['sid_results_original'] = {}
 
-RATIO_THRESHOLD    = 0.65   # batas rasio maksimum (dipakai utk solve nilai RP)
+RATIO_THRESHOLD    = 0.65   # batas rasio maksimum (dipakai utk solve RP Min sbg referensi)
 AUTO_ADJUST_TARGET = 0.63   # batas rasio final utk LR (dipakai sbg cap utama, bukan opsional lagi)
 CREDIT_LIMIT_PARTISIPAN = 160_000_000_000.0
 
@@ -88,17 +88,27 @@ def calc_collateral(stocks_dict, closing_prices, risk_params):
         detail.append({"stock": stock, "qty": qty, "cp": cp, "hc": hc, "collateral": coll})
     return total, detail
 
-def solve_rp(loan_ex, accrued, coll_after_rp):
+def solve_rp_min(loan_ex, accrued, coll_after_rp):
     """
-    RP di-solve LANGSUNG dari target rasio 65% (bukan dari nilai transaksi jual + buffer 1%).
-    RP = Loan O/S sekarang (pokok+bunga) − (kolateral sisa setelah jual × 65%)
-    Di-clamp ke [0, loan_ex] — RP tidak mungkin negatif, dan tidak mungkin melebihi loan existing.
+    RP MINIMUM — nilai RP terkecil yang cukup membawa rasio (loan+accrued)/kolateral
+    turun ke tepat 65% (RATIO_THRESHOLD). Ini hanya REFERENSI batas bawah, BUKAN nilai
+    yang dipakai untuk rekomendasi di file output (lihat solve_rp_max).
+    RP_min = (loan O/S + accrued) − (kolateral sisa setelah jual × 65%), di-clamp ke [0, loan_ex].
     """
     if coll_after_rp > 0:
         rp = (loan_ex + accrued) - coll_after_rp * RATIO_THRESHOLD
     else:
         rp = loan_ex + accrued
     return min(max(rp, 0.0), loan_ex)
+
+def solve_rp_max(loan_ex, accrued):
+    """
+    RP MAXIMUM — dipakai sebagai REKOMENDASI RESMI di file output RP.
+    RP hanya dihitung kalau nasabah punya transaksi sell saham marginable (dicek di
+    pemanggil lewat has_rp/rp_detail). Begitu terpicu, kewajibannya adalah melunasi
+    seluruh Loan O/S + Accrued Interest — tidak dibatasi rasio 65% seperti RP Min.
+    """
+    return loan_ex + accrued
 
 def solve_lr(coll_after_lr, loan_after_rp, accrued, avail_lim, total_rp):
     """
@@ -434,7 +444,7 @@ with tab_pei:
                             lot_op     = stocks_op.get(stock, 0)
                             lot_keluar = min(lot_sell, lot_op)
                             price_s    = closing_prices.get(stock, 0)
-                            rp_min     = lot_keluar * price_s     # referensi: nilai jual (bukan basis RP lagi)
+                            rp_min     = lot_keluar * price_s     # referensi: nilai jual (bukan basis RP)
                             ada_di_op  = lot_op > 0
                             rp_detail.append({
                                 'stock': stock, 'lot_sell': lot_sell, 'lot_op': lot_op,
@@ -454,8 +464,12 @@ with tab_pei:
                         coll_before_rp, _ = calc_collateral(stocks_op,       closing_prices, risk_params_hc)
                         coll_after_rp,  _ = calc_collateral(stocks_after_rp, closing_prices, risk_params_hc)
 
-                        # ── RP-1: solve-to-65% (bukan lagi nilai jual*1.01) ──
-                        total_rp_maks = solve_rp(loan_ex, accrued, coll_after_rp)
+                        # ── RP: kalau ada transaksi sell (rp_detail tidak kosong) & loan_ex>0 → kewajiban
+                        #    RP = RP Max (lunasi penuh Loan O/S + Accrued). RP Min (solve-to-65%) tetap
+                        #    dihitung sbg referensi batas bawah saja, tidak dipakai untuk rekomendasi.
+                        has_rp_trx    = bool(rp_detail) and loan_ex > 0
+                        total_rp_min_ratio = solve_rp_min(loan_ex, accrued, coll_after_rp)
+                        total_rp_maks = solve_rp_max(loan_ex, accrued) if has_rp_trx else 0.0
 
                         loan_after_rp = max(loan_ex - total_rp_maks, 0)
                         rasio_rp = (loan_after_rp + accrued) / coll_after_rp if coll_after_rp > 0 else None
@@ -486,6 +500,7 @@ with tab_pei:
                             'name': name, 'cid': sid_to_cid.get(sid, sid),
                             'loan_existing': loan_ex, 'accrued': accrued, 'avail_limit': avail_lim,
                             'rp_detail': rp_detail, 'total_rp_maks': total_rp_maks, 'total_rp_min': total_rp_min,
+                            'total_rp_min_ratio': total_rp_min_ratio,
                             'stocks_op': stocks_op, 'stocks_after_rp': stocks_after_rp, 'stocks_after_lr': stocks_after_lr,
                             'buy_stocks': buy_stocks,
                             'coll_before_rp': coll_before_rp, 'coll_after_rp': coll_after_rp, 'coll_after_lr': coll_after_lr,
@@ -533,8 +548,9 @@ with tab_pei:
         ])
 
         with sub_rp:
-            st.info("💡 Input RP **terlebih dahulu**. RP sekarang di-*solve* langsung dari target rasio 65% "
-                     "(bukan dari nilai transaksi jual + buffer 1%).")
+            st.info("💡 Input RP **terlebih dahulu**. RP dipicu oleh transaksi **sell** saham marginable — "
+                     "begitu terpicu, kewajibannya adalah RP Max (lunasi penuh Loan O/S + Accrued). "
+                     "RP Min (solve-to-65%) ditampilkan sebagai referensi batas bawah saja.")
             rp_rows = []
             for sid, d in results.items():
                 if d['total_rp_maks'] <= 0: continue
@@ -547,7 +563,8 @@ with tab_pei:
                         'Lot Jual': int(rd['lot_sell']), 'Lot OP': int(rd['lot_op']),
                         'Lot Keluar': int(rd['lot_keluar']), 'Harga': rd['price'],
                         'Nilai Jual (ref)': rd['rp_min'],
-                        'Total RP (solve 65%)': d['total_rp_maks'],
+                        'RP Min (ref, target 65%)': d.get('total_rp_min_ratio', 0),
+                        'Total RP Max (rekomendasi)': d['total_rp_maks'],
                         'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
                         'Rasio After RP': rasio_val, 'Status': status_rasio,
                     })
@@ -559,7 +576,7 @@ with tab_pei:
                     return ''
                 st.dataframe(df_rp.style.map(color_rp, subset=['Status']), use_container_width=True)
             else:
-                st.info("Tidak ada transaksi jual kemarin, atau rasio sudah aman sehingga RP=0.")
+                st.info("Tidak ada transaksi jual kemarin, sehingga tidak ada kewajiban RP.")
 
         with sub_lr:
             st.info("💡 Input LR **setelah RP selesai**. LR Final = MIN(rasio kolateral 63%, Available Limit efektif).")
@@ -631,7 +648,8 @@ with tab_pei:
                 if num_key not in st.session_state:
                     st.session_state[num_key] = float(d['total_rp_maks'])
 
-                st.caption(f"RP hasil solve-to-65% (default): {fmt_rp(d['total_rp_maks'])}. "
+                st.caption(f"RP Max (rekomendasi, default): {fmt_rp(d['total_rp_maks'])} "
+                           f"| RP Min (ref, target 65%): {fmt_rp(d.get('total_rp_min_ratio', 0))}. "
                            f"Ubah nilai di bawah untuk mensimulasikan RP berbeda.")
                 total_rp_sim = st.number_input(
                     "Total RP Adjust", step=1_000_000.0, format="%.0f", key=num_key,
@@ -722,7 +740,8 @@ with tab_pei:
                     'SID': sid, 'Nama': d['name'],
                     'Loan Existing': d['loan_existing'], 'Coll Awal': d['coll_before_rp'],
                     'Current Ratio': f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "-",
-                    'RP (solve 65%)': d['total_rp_maks'],
+                    'RP Min (ref)': d.get('total_rp_min_ratio', 0),
+                    'RP Max (rekomendasi)': d['total_rp_maks'],
                     'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
                     'Rasio RP': f"{d['rasio_rp']*100:.2f}%" if d['rasio_rp'] is not None else "-",
                     'Status RP': "✅" if d['rasio_rp'] is not None and d['rasio_rp'] < 0.65 else ("-" if d['total_rp_maks']==0 else "❌"),
@@ -744,7 +763,9 @@ with tab_pei:
                             'SID': sid, 'Nama': d['name'], 'Saham': rd['stock'],
                             'Lot Jual': int(rd['lot_sell']), 'Lot OP': int(rd['lot_op']),
                             'Lot Keluar': int(rd['lot_keluar']), 'Harga': rd['price'],
-                            'Nilai Jual (ref)': rd['rp_min'], 'Total RP (solve 65%)': d['total_rp_maks'],
+                            'Nilai Jual (ref)': rd['rp_min'],
+                            'RP Min (ref)': d.get('total_rp_min_ratio', 0),
+                            'Total RP Max (rekomendasi)': d['total_rp_maks'],
                             'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
                             'Rasio After RP': f"{d['rasio_rp']*100:.2f}%" if d['rasio_rp'] is not None else "N/A",
                         })
@@ -754,7 +775,7 @@ with tab_pei:
                     if d['max_lr_final'] <= 0: continue
                     lr_exp.append({
                         'SID': sid, 'Nama': d['name'],
-                        'RP (solve 65%)': d['total_rp_maks'], 'Avail Limit': d['avail_limit'],
+                        'RP Max (rekomendasi)': d['total_rp_maks'], 'Avail Limit': d['avail_limit'],
                         'Avail Efektif': d['avail_efektif'], 'LR @63%': d['max_lr_63'],
                         'Loan After RP': d['loan_after_rp'], 'Coll After LR': d['coll_after_lr'],
                         'Rasio LR': f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "N/A",
@@ -833,6 +854,7 @@ with tab_mnc:
             add("RP-2. Lot Sell ≤ Lot di OP",  True, msg)
             add("RP-3. Rasio After RP < 65%",  True, msg)
             total_rp_maks = 0.0
+            total_rp_min_ratio = 0.0
         else:
             rp1_detail = [s for s in sell_stocks if stocks_op.get(s, 0) == 0]
             if rp1_detail:
@@ -858,11 +880,14 @@ with tab_mnc:
                     if stocks_after_rp[stock] <= 0: del stocks_after_rp[stock]
 
             coll_after_rp_tmp, _ = calc_collateral(stocks_after_rp, closing_prices, risk_params)
-            total_rp_maks = solve_rp(loan_ex, accrued, coll_after_rp_tmp)
+            # RP dipicu oleh transaksi sell → kewajiban = RP Max (lunasi penuh loan+accrued).
+            # RP Min (solve-to-65%) tetap dihitung & ditampilkan sbg referensi batas bawah saja.
+            total_rp_min_ratio = solve_rp_min(loan_ex, accrued, coll_after_rp_tmp)
+            total_rp_maks = solve_rp_max(loan_ex, accrued)
 
             add("RP-2. Lot Sell ≤ Lot di OP", True,
                 ("⚠️ Auto-adjusted: " + "; ".join(rp2_detail)) if rp2_detail else
-                f"Total RP (solve 65%): {fmt_rp(total_rp_maks)}")
+                f"Total RP Max (rekomendasi): {fmt_rp(total_rp_maks)} | RP Min (ref): {fmt_rp(total_rp_min_ratio)}")
 
             coll_after_rp, _ = calc_collateral(stocks_after_rp, closing_prices, risk_params)
             loan_after_rp    = max(loan_ex - total_rp_maks, 0)
@@ -945,6 +970,7 @@ with tab_mnc:
             "loan_existing": loan_ex, "accrued": accrued, "avail_limit": avail_lim,
             "stocks_op": stocks_op, "stocks_after_rp": stocks_after_rp, "stocks_after_lr": stocks_after_lr,
             "rp_detail": rp_detail, "total_rp_maks": total_rp_maks, "total_rp_min": total_rp_min,
+            "total_rp_min_ratio": total_rp_min_ratio,
             "loan_after_rp": loan_after_rp2,
             "coll_before_rp": calc_collateral(stocks_op, closing_prices, risk_params)[0],
             "coll_after_rp": coll_after_rp2, "coll_after_lr": coll_after_lr,
@@ -1043,7 +1069,7 @@ with tab_mnc:
         ])
 
         with tab_rp:
-            st.info("💡 Input RP **terlebih dahulu**. RP di-solve langsung ke rasio 65%.")
+            st.info("💡 Input RP **terlebih dahulu**. RP dipicu oleh transaksi sell — kewajiban = RP Max (lunasi penuh).")
             for sid, data in sid_results.items():
                 if not data.get('has_rp') or data.get('rp_skipped') or data['total_rp_maks'] <= 0: continue
                 ok   = lolos_rp(data)
@@ -1055,6 +1081,9 @@ with tab_mnc:
                     c2.metric("Avail Efektif",   fmt_rp(data['avail_efektif']))
                     c3.metric("LR @63%",         fmt_rp(data['max_lr_63']))
                     c4.metric("Coll After LR",   fmt_rp(data['coll_after_lr']))
+                    c5,c6,_,_ = st.columns(4)
+                    c5.metric("RP Min (ref, 65%)", fmt_rp(data.get('total_rp_min_ratio', 0)))
+                    c6.metric("RP Max (rekomendasi)", fmt_rp(data['total_rp_maks']))
                     if data.get('buy_status_detail'):
                         df_buy_status = pd.DataFrame(data['buy_status_detail']).rename(columns={
                             'stock': 'Saham', 'lot_beli': 'Lot Beli',
@@ -1133,7 +1162,8 @@ with tab_mnc:
                     if num_key not in st.session_state:
                         st.session_state[num_key] = saved_total if saved_total is not None else float(d['total_rp_maks'])
 
-                    st.caption(f"RP hasil solve-to-65% (default): {fmt_rp(d['total_rp_maks'])}")
+                    st.caption(f"RP Max (rekomendasi, default): {fmt_rp(d['total_rp_maks'])} "
+                               f"| RP Min (ref, 65%): {fmt_rp(d.get('total_rp_min_ratio', 0))}")
                     total_rp_sim = st.number_input(
                         "Total RP Adjust", step=1_000_000.0, format="%.0f", key=num_key,
                     )
@@ -1315,7 +1345,8 @@ with tab_mnc:
                     'Loan Existing': d['loan_existing'], 'Accrued': d['accrued'],
                     'Avail Limit': d['avail_limit'], 'Coll Awal': d['coll_before_rp'],
                     'Current Ratio': f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "-",
-                    'RP (solve 65%)': d['total_rp_maks'],
+                    'RP Min (ref)': d.get('total_rp_min_ratio', 0),
+                    'RP Max (rekomendasi)': d['total_rp_maks'],
                     'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
                     'Status RP': "✅" if lolos_rp(d) else ("⏭" if d['rp_skipped'] else ("-" if not d['has_rp'] else "❌")),
                     'Avail Efektif': d['avail_efektif'], 'Coll After LR': d['coll_after_lr'],
