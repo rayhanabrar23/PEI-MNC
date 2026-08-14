@@ -888,7 +888,16 @@ with tab_mnc:
         else:
             lr1_pass   = True
             lr1_detail = []
-            buy_rows = df_buy[df_buy.iloc[:, 0].astype(str) == sid] if df_buy is not None else pd.DataFrame()
+            if df_buy is not None and not df_buy.empty and df_buy.shape[1] > 0:
+                try:
+                    buy_rows = df_buy[df_buy.iloc[:, 0].astype(str) == sid]
+                except IndexError:
+                    buy_rows = pd.DataFrame()
+            else:
+                buy_rows = pd.DataFrame()
+
+            if buy_rows.empty and df_buy is not None and (df_buy.empty or df_buy.shape[1] == 0):
+                lr1_detail.append("⚠️ Sheet Loan Request (LR) di Hasil MNC kosong/tidak sesuai format — LR-1 dilewati")
             for _, row in buy_rows.iterrows():
                 vol = pd.to_numeric(row.iloc[13] if len(row) > 13 else 0, errors='coerce') or 0
                 avq = pd.to_numeric(row.iloc[4]  if len(row) > 4  else 0, errors='coerce') or 0
