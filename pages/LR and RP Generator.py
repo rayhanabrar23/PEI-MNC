@@ -533,7 +533,7 @@ with tab_pei:
         n_lr_lolos = sum(1 for v in results.values() if v['rasio_lr'] is not None and v['rasio_lr'] < 0.65)
         n_sell_trx = sum(len(v['rp_detail'])  for v in results.values())
         n_buy_trx  = sum(len(v['buy_stocks']) for v in results.values())
-        
+
         m1,m2,m3,m4,m5 = st.columns(5)
         m1.metric(
             "Total Nasabah PEI", len(results),
@@ -562,13 +562,6 @@ with tab_pei:
             "LR Lolos Rasio", n_lr_lolos,
             help="Nasabah dengan Rasio After LR < 65%.\n\n"
                  "**Dihitung:** (Loan setelah RP + Accrued + Nilai Beli dicairkan) ÷ Collateral setelah LR."
-        )
-        
-        st.caption(
-            f"📌 **{len(results)}** nasabah PEI ter-record dari file *SID Client* · "
-            f"**{n_sell_trx}** baris transaksi Sell & **{n_buy_trx}** baris transaksi Buy dari *Netting Invoice* · "
-            f"Loan/Accrued dari *Outstanding Position* · Available Limit dari *Credit Limit* · "
-            f"Harga dari *Closing Price* · Haircut/Available Qty dari *Risk Parameter*."
         )
 
         sub_rp, sub_lr, sub_sim, sub_sum, sub_exp = st.tabs([
