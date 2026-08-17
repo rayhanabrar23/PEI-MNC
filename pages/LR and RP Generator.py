@@ -531,28 +531,17 @@ with tab_pei:
         n_has_lr   = sum(1 for v in results.values() if v['total_buy_val'] > 0)
         n_rp_lolos = sum(1 for v in results.values() if v['rasio_rp'] is not None and v['rasio_rp'] < 0.65)
         n_lr_lolos = sum(1 for v in results.values() if v['rasio_lr'] is not None and v['rasio_lr'] < 0.65)
-        n_sell_trx = sum(len(v['rp_detail'])  for v in results.values())
-        n_buy_trx  = sum(len(v['buy_stocks']) for v in results.values())
+        n_has_rp   = sum(1 for v in results.values() if v['total_rp_maks'] > 0)
+        n_has_lr   = sum(1 for v in results.values() if v['total_buy_val'] > 0)
+        n_rp_lolos = sum(1 for v in results.values() if v['rasio_rp'] is not None and v['rasio_rp'] < 0.65)
+        n_lr_lolos = sum(1 for v in results.values() if v['rasio_lr'] is not None and v['rasio_lr'] < 0.65)
 
         m1,m2,m3,m4,m5 = st.columns(5)
-        m1.metric(
-            "Total Nasabah PEI", len(results),
-            help="Jumlah SID yang tercatat sebagai nasabah PEI.\n\n"
-                 "**Sumber:** file *SID Client* (CID dicocokkan → SID)."
-        )
-        m2.metric(
-            "Nasabah Ada RP", n_has_rp,
-            help=f"Nasabah PEI dengan kewajiban Repayment (RP Max > 0), "
-                 f"dari total **{n_sell_trx}** baris transaksi Sell (saham × SID).\n\n"
-                 "**Sumber:** transaksi *sell* di file *Netting Invoice*, "
-                 "dicocokkan dengan saham di file *Outstanding Position*."
-        )
-        m3.metric(
-            "Nasabah Ada LR", n_has_lr,
-            help=f"Nasabah PEI dengan transaksi Beli margin (Nilai Beli > 0), "
-                 f"dari total **{n_buy_trx}** baris transaksi Buy (saham × SID).\n\n"
-                 "**Sumber:** transaksi *buy* di file *Netting Invoice*."
-        )
+        m1.metric("Total Nasabah PEI", len(results))
+        m2.metric("Nasabah Ada RP",    n_has_rp)
+        m3.metric("Nasabah Ada LR",    n_has_lr)
+        m4.metric("RP Lolos Rasio",    n_rp_lolos)
+        m5.metric("LR Lolos Rasio",    n_lr_lolos)
         m4.metric(
             "RP Lolos Rasio", n_rp_lolos,
             help="Nasabah dengan Rasio After RP < 65%.\n\n"
