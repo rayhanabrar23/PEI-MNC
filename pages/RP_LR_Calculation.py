@@ -945,7 +945,6 @@ with tab_pei:
                     'Rasio LR': f"{d['rasio_lr']*100:.2f}%" if d['rasio_lr'] is not None else "-",
                     'Status LR': "✅" if d['rasio_lr'] is not None and d['rasio_lr'] < 0.65 else ("-" if d['total_buy_val']==0 else "❌"),
                 })
-            st.dataframe(pd.DataFrame(summary_rows), use_container_width=True, hide_index=True)
 
         with sub_exp:
             out = io.BytesIO()
