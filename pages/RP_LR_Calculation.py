@@ -1026,13 +1026,21 @@ with tab_mnc:
         return df_sell, df_buy, df_buy_raw
 
     def validate_sid_mnc(sid, op_data, cl_data, sell_regular, margin_buy,
-                          closing_prices, risk_params, df_sell, df_buy, risk_avq):
-        op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"name":sid,"stocks":{}})
-        cl  = cl_data.get(sid, {"available_limit":0,"name":sid})
+                          closing_prices, risk_params, df_sell, df_buy, risk_avq,
+                          sid_to_cid_map=None, cid_to_name_map=None):
+        sid_to_cid_map  = sid_to_cid_map or {}
+        cid_to_name_map = cid_to_name_map or {}
+        op  = op_data.get(sid, {"loan_existing":0,"accrued_interest":0,"name":None,"stocks":{}})
+        cl  = cl_data.get(sid, {"available_limit":0,"name":None})
         loan_ex   = op["loan_existing"]
         accrued   = op["accrued_interest"]
         avail_lim = cl["available_limit"]
-        name      = op.get("name") or cl.get("name") or sid
+        # Nama: OP dulu -> SID Client (sumber pendaftaran PEI) -> Credit Limit -> fallback SID
+        cid_for_sid = sid_to_cid_map.get(sid, '')
+        name = (op.get("name")
+                or cid_to_name_map.get(cid_for_sid, '')
+                or cl.get("name")
+                or sid)
         stocks_op = op.get("stocks", {})
 
         sell_stocks = sell_regular.get(sid, {})
@@ -1205,12 +1213,28 @@ with tab_mnc:
                 all_sids = sorted(set(list(op_data.keys()) + list(cl_data.keys()) +
                                       list(margin_buy.keys()) + list(sell_regular.keys())))
 
+                sid_to_cid_mnc  = {}
+                cid_to_name_mnc = {}
+                pei_sids_mnc    = set()
+                if file_sid_client is not None:
+                    df_sid_mnc = find_and_rename(pd.read_excel(file_sid_client, dtype=str))
+                    df_sid_mnc['cid_key'] = df_sid_mnc['cid_key'].astype(str).str.strip()
+                    df_sid_mnc['sid_key'] = df_sid_mnc['sid_key'].astype(str).str.strip()
+                    sid_to_cid_mnc  = df_sid_mnc.set_index('sid_key')['cid_key'].to_dict()
+                    cid_to_name_mnc = (df_sid_mnc.drop_duplicates('cid_key').set_index('cid_key')['name_key'].to_dict()
+                                       if 'name_key' in df_sid_mnc.columns else {})
+                    pei_sids_mnc = set(df_sid_mnc['sid_key'].astype(str).str.strip())
+                else:
+                    st.warning("⚠️ File SID Client belum diupload (di tab TRX PEI) — nama & status PEI nasabah tidak lengkap.")
+
                 sid_results = {}
                 for sid in all_sids:
                     sid_results[sid] = validate_sid_mnc(
                         sid, op_data, cl_data, sell_regular, margin_buy,
-                        closing_prices, risk_params, df_sell, df_buy, risk_avq)
-
+                        closing_prices, risk_params, df_sell, df_buy, risk_avq,
+                        sid_to_cid_map=sid_to_cid_mnc, cid_to_name_map=cid_to_name_mnc)
+                    sid_results[sid]['is_pei'] = sid in pei_sids_mnc
+                    
                 total_lr_all = sum(d['max_lr_final'] for d in sid_results.values() if lolos_lr(d))
                 total_rp_all = sum(d['total_rp_maks'] for d in sid_results.values() if lolos_rp(d))
                 global_result = {
@@ -1260,68 +1284,65 @@ with tab_mnc:
 
         st.divider()
 
-        tab_rp, tab_lr, tab_sim, tab_global, tab_gagal, tab_adj, tab_exp = st.tabs([
-            "📤 Langkah 1 — RP", "📥 Langkah 2 — LR",
-            "🎛️ Simulator", "🌐 Limit Participant",
-            "❌ Nasabah Gagal", "⚡ Auto-Adjust LR", "📥 Export",
+        tab_status, tab_sim, tab_global, tab_adj, tab_exp = st.tabs([
+            "📊 Status", "🎛️ Simulator", "🌐 Limit Participant",
+            "⚡ Auto-Adjust LR", "📥 Export",
         ])
 
-        with tab_rp:
-            st.info("💡 Input RP **terlebih dahulu**. RP dipicu oleh transaksi sell — kewajiban = RP Max (lunasi penuh).")
-            for sid, data in sid_results.items():
-                if not data.get('has_rp') or data.get('rp_skipped') or data['total_rp_maks'] <= 0: continue
-                ok   = lolos_rp(data)
-                icon = "✅" if ok else "❌"
-                if data.get('is_simulated'): icon += " ✏️"
-                with st.expander(f"{icon} {sid} — {data['name']}  |  Max LR Final: {fmt_rp(data['max_lr_final'])}", expanded=not ok):
-                    c1,c2,c3,c4 = st.columns(4)
-                    c1.metric("Loan After RP",   fmt_rp(data['loan_after_rp']))
-                    c2.metric("Avail Efektif",   fmt_rp(data['avail_efektif']))
-                    c3.metric("LR @63%",         fmt_rp(data['max_lr_63']))
-                    c4.metric("Coll After LR",   fmt_rp(data['coll_after_lr']))
-                    c5,c6,_,_ = st.columns(4)
-                    c5.metric("RP Min (ref, 65%)", fmt_rp(data.get('total_rp_min_ratio', 0)))
-                    c6.metric("RP Max (rekomendasi)", fmt_rp(data['total_rp_maks']))
-                    if data.get('buy_status_detail'):
-                        df_buy_status = pd.DataFrame(data['buy_status_detail']).rename(columns={
-                            'stock': 'Saham', 'lot_beli': 'Lot Beli',
-                            'available_qty': 'Available Qty', 'status': 'Status Margin'
-                        })
-                        st.dataframe(df_buy_status, use_container_width=True, hide_index=True)
-                    if data['rp_detail']:
-                        df_rd = pd.DataFrame([{
-                            'Saham': r['stock'], 'Lot Jual': int(r['lot_sell']),
-                            'Lot OP': int(r['lot_op']), 'Lot Keluar': int(r['lot_keluar']),
-                            'Harga': r['price'], 'Nilai Jual (ref)': r['rp_min']
-                        } for r in data['rp_detail']])
-                        st.dataframe(df_rd, use_container_width=True, hide_index=True)
-                    for c in data['checks']:
-                        if not c['label'].startswith('RP-'): continue
-                        if c['passed']: st.success(f"✅ **{c['label']}** {c['detail']}")
-                        else:           st.error(  f"❌ **{c['label']}** {c['detail']}")
+        with tab_status:
+            st.subheader("📊 Status — RP & LR Final per Nasabah")
+            st.caption("Hanya nasabah dengan transaksi Sell dan/atau Buy yang ditampilkan.")
 
-        with tab_lr:
-            st.info("💡 Input LR **setelah RP selesai**. LR Final = MIN(LR@63%, Available Limit efektif).")
+            status_rows = []
             for sid, data in sid_results.items():
-                if not data.get('has_lr'): continue
-                ok   = lolos_lr(data)
-                icon = "✅" if ok else "❌"
-                if data.get('is_simulated'): icon += " ✏️"
-                with st.expander(f"{icon} {sid} — {data['name']}  |  Max LR Final: {fmt_rp(data['max_lr_final'])}", expanded=not ok):
-                    c1,c2,c3,c4 = st.columns(4)
-                    c1.metric("Loan After RP",   fmt_rp(data['loan_after_rp']))
-                    c2.metric("Avail Efektif",   fmt_rp(data['avail_efektif']))
-                    c3.metric("LR @63%",         fmt_rp(data['max_lr_63']))
-                    c4.metric("Coll After LR",   fmt_rp(data['coll_after_lr']))
-                    c5,c6,_,_ = st.columns(4)
-                    c5.metric("Max LR Final",    fmt_rp(data['max_lr_final']))
-                    c6.metric("Binding",         data.get('lr_binding',''))
-                    if not ok:
-                        st.warning(f"💡 Potong LR ke: **{fmt_rp(data['max_lr_final'])}**")
-                    for c in data['checks']:
-                        if not c['label'].startswith('LR-'): continue
-                        if c['passed']: st.success(f"✅ **{c['label']}** {c['detail']}")
-                        else:           st.error(  f"❌ **{c['label']}** {c['detail']}")
+                if not data.get('has_rp') and not data.get('has_lr'):
+                    continue
+
+                if data.get('rp_skipped'):
+                    rp_final, rasio_rp, status_rp = 0.0, None, "⏭ (Loan=0)"
+                elif data.get('has_rp') and data['total_rp_maks'] > 0:
+                    rp_final  = data['total_rp_maks']
+                    rasio_rp  = data.get('rasio_rp')
+                    status_rp = "✅" if lolos_rp(data) else "❌"
+                else:
+                    rp_final, rasio_rp, status_rp = 0.0, None, "-"
+
+                if data.get('has_lr'):
+                    lr_final  = data['max_lr_final']
+                    rasio_lr  = data.get('rasio_lr')
+                    status_lr = "✅" if lolos_lr(data) else "❌"
+                    binding   = data.get('lr_binding', '')
+                else:
+                    lr_final, rasio_lr, status_lr, binding = 0.0, None, "-", "-"
+
+                status_rows.append({
+                    'SID': sid,
+                    'Nama': data['name'] + (" ✏️" if data.get('is_simulated') else ""),
+                    'Available Limit': data['avail_limit'],
+                    'Loan Existing': data['loan_existing'],
+                    'RP Min (ref, 65%)': data.get('total_rp_min_ratio', 0),
+                    'RP Final': rp_final,
+                    'Rasio RP': f"{rasio_rp*100:.2f}%" if rasio_rp is not None else "-",
+                    'Status RP': status_rp,
+                    'LR Final': lr_final,
+                    'Rasio LR': f"{rasio_lr*100:.2f}%" if rasio_lr is not None else "-",
+                    'Status LR': status_lr,
+                    'Binding LR': binding,
+                })
+
+            if not status_rows:
+                st.info("Belum ada nasabah dengan transaksi RP atau LR.")
+            else:
+                st.dataframe(
+                    pd.DataFrame(status_rows), use_container_width=True, hide_index=True,
+                    column_config={
+                        'Available Limit': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'Loan Existing': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'RP Min (ref, 65%)': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'RP Final': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'LR Final': st.column_config.NumberColumn(format="Rp %.0f"),
+                    },
+                )
 
         with tab_sim:
             st.subheader("🎛️ Simulator — Ubah Nilai RP, Lihat Dampak ke LR")
@@ -1464,18 +1485,7 @@ with tab_mnc:
             else:
                 st.error(f"❌ GAGAL — {global_result['detail']}")
 
-        with tab_gagal:
-            gc1, gc2 = st.columns(2)
-            with gc1:
-                gagal_rp = [(s,d) for s,d in sid_results.items()
-                            if d.get('has_rp') and not d.get('rp_skipped') and not lolos_rp(d)]
-                st.markdown(f"#### 🔴 Gagal RP — {len(gagal_rp)} nasabah")
-                if not gagal_rp: st.success("Semua lolos RP.")
-                for sid, data in gagal_rp:
-                    with st.expander(f"❌ {sid} — {data['name']}"):
-                        for c in data['checks']:
-                            if c['label'].startswith('RP-') and not c['passed']:
-                                st.error(f"**{c['label']}** — {c['detail']}")
+        
             with gc2:
                 gagal_lr = [(s,d) for s,d in sid_results.items()
                             if d.get('has_lr') and not lolos_lr(d)]
@@ -1491,10 +1501,12 @@ with tab_mnc:
 
         with tab_adj:
             st.subheader("⚡ Auto-Adjust LR — Potong ke Max LR Final")
+            st.caption("Hanya nasabah PEI yang punya transaksi Buy.")
             gagal_lr3 = [(s,d) for s,d in sid_results.items()
-                         if d.get('has_lr') and any(
+                         if d.get('has_lr') and d.get('is_pei') and any(
                              c['label'] == 'LR-3. Nilai Beli ≤ Max LR Final' and not c['passed']
                              for c in d['checks'])]
+            
             if not gagal_lr3:
                 st.success("✅ Tidak ada nasabah yang perlu di-adjust.")
             else:
