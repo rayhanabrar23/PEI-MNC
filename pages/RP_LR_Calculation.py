@@ -730,7 +730,7 @@ with tab_pei:
                 )
 
         with sub_sim:
-            st.subheader("🎛️ Simulator — Ubah Nilai RP, Lihat Dampak ke LR")
+            st.markdown("###### 🎛️ Simulator — Ubah Nilai RP, Lihat Dampak ke LR")
             sid_options = [s for s,d in results.items() if d['total_rp_maks'] > 0]
             if not sid_options:
                 st.warning("Tidak ada nasabah dengan transaksi.")
@@ -739,31 +739,54 @@ with tab_pei:
                     format_func=lambda s: f"{s} — {results[s]['name']}", key='pei_sim_sel')
                 d = results[sel]
                 if d.get('is_simulated'):
-                    st.success("✏️ Menggunakan nilai simulasi yang sudah disimpan.")
-                c1,c2,c3 = st.columns(3)
-                c1.metric("Loan Outstanding", fmt_rp(d['loan_existing']))
-                c2.metric("Collateral Awal",  fmt_rp(d['coll_before_rp']))
-                c3.metric("Current Ratio", f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
+                    st.caption("✏️ Menggunakan nilai simulasi yang sudah disimpan.")
 
+                # ── Ringkasan saham yang di-RP ──
+                st.markdown("**Ringkasan Saham yang Di-RP**")
                 rp_ref_rows = [rd for rd in d['rp_detail'] if rd['ada_di_op']]
                 if rp_ref_rows:
-                    st.caption("Ringkasan saham RP (referensi — lot keluar tetap dihitung penuh)")
                     df_rp_ref = pd.DataFrame([{
                         'Saham': rd['stock'], 'Lot Jual': int(rd['lot_sell']),
                         'Lot OP': int(rd['lot_op']), 'Lot Keluar': int(rd['lot_keluar']),
-                        'Harga': rd['price'], 'Nilai Jual (ref)': rd['rp_min'],
+                        'Harga': rd['price'], 'Nilai Jual (ref)': fmt_rp(rd['rp_min']),
                     } for rd in rp_ref_rows])
                     st.dataframe(df_rp_ref, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Tidak ada saham yang match OP.")
 
+                # ── Ringkasan OP nasabah ──
+                st.markdown("**Ringkasan Outstanding Position (OP)**")
+                if d['stocks_op']:
+                    _, op_detail = calc_collateral(d['stocks_op'], closing_prices, risk_params_hc)
+                    df_op = pd.DataFrame([{
+                        'Saham': item['stock'], 'Lot': int(item['qty']),
+                        'Closing Price': item['cp'], 'Haircut': f"{item['hc']*100:.0f}%",
+                        'Nilai Kolateral': fmt_rp(item['collateral']),
+                    } for item in op_detail])
+                    st.dataframe(df_op, use_container_width=True, hide_index=True)
+                else:
+                    st.caption("Nasabah tidak punya OP.")
+
+                # ── Ringkasan Credit Limit nasabah ──
+                st.markdown("**Ringkasan Credit Limit**")
+                df_cl = pd.DataFrame([{
+                    'Loan Existing': fmt_rp(d['loan_existing']),
+                    'Accrued Interest': fmt_rp(d['accrued']),
+                    'Available Limit (Credit Limit file)': fmt_rp(d['avail_limit']),
+                }])
+                st.dataframe(df_cl, use_container_width=True, hide_index=True)
+
+                st.divider()
+
+                # ── Simulasi nilai RP ──
                 num_key = f"pei_rp_total_{sel}"
                 if num_key not in st.session_state:
                     st.session_state[num_key] = float(d['total_rp_maks'])
 
                 st.caption(f"RP Max (rekomendasi, default): {fmt_rp(d['total_rp_maks'])} "
-                           f"| RP Min (ref, target 65%): {fmt_rp(d.get('total_rp_min_ratio', 0))}. "
-                           f"Ubah nilai di bawah untuk mensimulasikan RP berbeda.")
+                           f"| RP Min (ref, target 65%): {fmt_rp(d.get('total_rp_min_ratio', 0))}")
                 total_rp_sim = st.number_input(
-                    "Total RP Adjust", step=1_000_000.0, format="%.0f", key=num_key,
+                    "Simulasi nilai RP di-adjust jadi:", step=1_000_000.0, format="%.0f", key=num_key,
                 )
 
                 stocks_ar_sim = dict(d['stocks_op'])
@@ -776,38 +799,40 @@ with tab_pei:
                 loan_ar_sim    = max(d['loan_existing'] - total_rp_sim, 0)
                 rasio_rp_sim   = (loan_ar_sim + d['accrued']) / coll_ar_sim if coll_ar_sim > 0 else None
 
-                st.divider()
-                r1,r2,r3,r4 = st.columns(4)
-                r1.metric("Total RP", fmt_rp(total_rp_sim))
-                r2.metric("Loan After RP", fmt_rp(loan_ar_sim))
-                r3.metric("Coll After RP", fmt_rp(coll_ar_sim))
                 rp_ok = rasio_rp_sim is not None and rasio_rp_sim < 0.65
-                r4.metric("Rasio RP", f"{rasio_rp_sim*100:.2f}%" if rasio_rp_sim else "N/A",
-                    delta="✅ LOLOS" if rp_ok else "❌ GAGAL",
-                    delta_color="normal" if rp_ok else "inverse")
+                df_rp_impact = pd.DataFrame([{
+                    'Total RP': fmt_rp(total_rp_sim),
+                    'Loan After RP': fmt_rp(loan_ar_sim),
+                    'Coll After RP': fmt_rp(coll_ar_sim),
+                    'Rasio RP': f"{rasio_rp_sim*100:.2f}%" if rasio_rp_sim is not None else "N/A",
+                    'Status': "✅ LOLOS" if rp_ok else "❌ GAGAL",
+                }])
+                st.dataframe(df_rp_impact, use_container_width=True, hide_index=True)
 
+                # ── Dampak ke LR ──
                 stocks_al_sim = dict(stocks_ar_sim)
                 for stock, bdata in d['buy_stocks'].items():
-                    stocks_al_sim[stock] = stocks_al_sim.get(stock,0) + bdata['lot']
+                    stocks_al_sim[stock] = stocks_al_sim.get(stock, 0) + bdata['lot']
                 coll_al_sim, _ = calc_collateral(stocks_al_sim, closing_prices, risk_params_hc)
 
                 max63_sim, avail_eff_sim, max_final_sim, binding_sim = solve_lr(
                     coll_al_sim, loan_ar_sim, d['accrued'], d['avail_limit'], total_rp_sim)
-                num_lr_sim   = loan_ar_sim + d['accrued'] + min(d['total_buy_val'], max_final_sim)
-                rasio_lr_sim = num_lr_sim / coll_al_sim if coll_al_sim > 0 else None
+                total_pembiayaan_sim = loan_ar_sim + d['accrued'] + min(d['total_buy_val'], max_final_sim)
+                rasio_lr_sim = total_pembiayaan_sim / coll_al_sim if coll_al_sim > 0 else None
 
-                st.subheader("Dampak ke LR")
-                l1,l2,l3 = st.columns(3)
-                l1.metric("Avail Efektif",  fmt_rp(avail_eff_sim))
-                l2.metric("LR @63%",        fmt_rp(max63_sim))
-                l3.metric("Coll After LR",  fmt_rp(coll_al_sim))
-                l4,l5,l6 = st.columns(3)
-                l4.metric("Numerator LR",   fmt_rp(num_lr_sim))
+                st.markdown("**Dampak ke LR**")
                 lr_ok = rasio_lr_sim is not None and rasio_lr_sim < 0.65
-                l5.metric("Rasio LR", f"{rasio_lr_sim*100:.2f}%" if rasio_lr_sim else "N/A",
-                    delta="✅ LOLOS" if lr_ok else "❌ Perlu dipotong",
-                    delta_color="normal" if lr_ok else "inverse")
-                l6.metric("Max LR Final", fmt_rp(max_final_sim), delta=f"Binding: {binding_sim}")
+                df_lr_impact = pd.DataFrame([{
+                    'Avail Efektif': fmt_rp(avail_eff_sim),
+                    'LR @63%': fmt_rp(max63_sim),
+                    'Coll After LR': fmt_rp(coll_al_sim),
+                    'Total Pembiayaan (Loan+Accrued+LR)': fmt_rp(total_pembiayaan_sim),
+                    'Rasio LR': f"{rasio_lr_sim*100:.2f}%" if rasio_lr_sim is not None else "N/A",
+                    'Max LR Final': fmt_rp(max_final_sim),
+                    'Binding': binding_sim,
+                    'Status': "✅ LOLOS" if lr_ok else "❌ Perlu dipotong",
+                }])
+                st.dataframe(df_lr_impact, use_container_width=True, hide_index=True)
 
                 st.divider()
                 sv1, sv2, sv3 = st.columns(3)
