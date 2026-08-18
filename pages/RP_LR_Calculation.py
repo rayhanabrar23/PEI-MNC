@@ -879,33 +879,52 @@ with tab_pei:
                     pd.to_numeric(rp_final_df_state['RP Final'], errors='coerce').fillna(0.0)
                 ))
 
-            recap_rows = []
+            rp_recap_rows = []
+            lr_recap_rows = []
             for sid, d in results.items():
-                if d['total_rp_maks'] <= 0 and d['total_buy_val'] <= 0:
-                    continue
-                recap_rows.append({
-                    'SID': sid,
-                    'Nama': d['name'],
-                    'Available Limit': d['avail_limit'],
-                    'Loan Existing': d['loan_existing'],
-                    'RP Min': d.get('total_rp_min_ratio', 0),
-                    'RP Max': d['total_rp_maks'],
-                    'RP Final': rp_final_lookup.get(sid, d['total_rp_maks']),
-                    'LR Final Before Validasi': d['max_lr_final'],
-                })
+                if d['total_rp_maks'] > 0:
+                    rp_recap_rows.append({
+                        'SID': sid,
+                        'Nama': d['name'],
+                        'Available Limit': d['avail_limit'],
+                        'Loan Existing': d['loan_existing'],
+                        'RP Min': d.get('total_rp_min_ratio', 0),
+                        'RP Max': d['total_rp_maks'],
+                        'RP Final': rp_final_lookup.get(sid, d['total_rp_maks']),
+                    })
+                if d['total_buy_val'] > 0:
+                    lr_recap_rows.append({
+                        'SID': sid,
+                        'Nama': d['name'],
+                        'Available Limit': d['avail_limit'],
+                        'Loan Existing': d['loan_existing'],
+                        'LR Final Before Validasi': d['max_lr_final'],
+                    })
 
-            if not recap_rows:
-                st.info("Belum ada nasabah dengan RP atau LR terhitung.")
+            st.markdown("**Rekap RP**")
+            if not rp_recap_rows:
+                st.info("Belum ada nasabah dengan RP terhitung.")
             else:
-                df_recap = pd.DataFrame(recap_rows)
                 st.dataframe(
-                    df_recap, use_container_width=True, hide_index=True,
+                    pd.DataFrame(rp_recap_rows), use_container_width=True, hide_index=True,
                     column_config={
                         'Available Limit': st.column_config.NumberColumn(format="Rp %.0f"),
                         'Loan Existing': st.column_config.NumberColumn(format="Rp %.0f"),
                         'RP Min': st.column_config.NumberColumn(format="Rp %.0f"),
                         'RP Max': st.column_config.NumberColumn(format="Rp %.0f"),
                         'RP Final': st.column_config.NumberColumn(format="Rp %.0f"),
+                    },
+                )
+
+            st.markdown("**Rekap LR**")
+            if not lr_recap_rows:
+                st.info("Belum ada nasabah dengan LR terhitung.")
+            else:
+                st.dataframe(
+                    pd.DataFrame(lr_recap_rows), use_container_width=True, hide_index=True,
+                    column_config={
+                        'Available Limit': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'Loan Existing': st.column_config.NumberColumn(format="Rp %.0f"),
                         'LR Final Before Validasi': st.column_config.NumberColumn(format="Rp %.0f"),
                     },
                 )
