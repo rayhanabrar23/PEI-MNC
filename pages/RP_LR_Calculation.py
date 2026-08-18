@@ -529,30 +529,19 @@ with tab_pei:
         closing_prices = st.session_state['shared_closing_prices']
         risk_params_hc = st.session_state['shared_risk_params']
 
-        n_has_rp   = sum(1 for v in results.values() if v['total_rp_maks'] > 0)
-        n_has_lr   = sum(1 for v in results.values() if v['total_buy_val'] > 0)
-        n_rp_lolos = sum(1 for v in results.values() if v['rasio_rp'] is not None and v['rasio_rp'] < 0.65)
-        n_lr_lolos = sum(1 for v in results.values() if v['rasio_lr'] is not None and v['rasio_lr'] < 0.65)
-        n_has_rp   = sum(1 for v in results.values() if v['total_rp_maks'] > 0)
-        n_has_lr   = sum(1 for v in results.values() if v['total_buy_val'] > 0)
-        n_rp_lolos = sum(1 for v in results.values() if v['rasio_rp'] is not None and v['rasio_rp'] < 0.65)
-        n_lr_lolos = sum(1 for v in results.values() if v['rasio_lr'] is not None and v['rasio_lr'] < 0.65)
+        n_trx_sell = sum(1 for v in results.values() if len(v['rp_detail']) > 0)
+        n_trx_buy  = sum(1 for v in results.values() if len(v['buy_stocks']) > 0)
 
-        m1,m2,m3,m4,m5 = st.columns(5)
-        m1.metric("Total Nasabah PEI", len(results))
-        m2.metric("Nasabah Ada RP",    n_has_rp)
-        m3.metric("Nasabah Ada LR",    n_has_lr)
-        m4.metric("RP Lolos Rasio",    n_rp_lolos)
-        m5.metric("LR Lolos Rasio",    n_lr_lolos)
-        m4.metric(
-            "RP Lolos Rasio", n_rp_lolos,
-            help="Nasabah dengan Rasio After RP < 65%.\n\n"
-                 "**Dihitung:** (Loan setelah RP + Accrued) ÷ Collateral setelah RP."
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total Nasabah PEI Terdaftar", len(results))
+        m2.metric(
+            "Nasabah Transaksi Sell", n_trx_sell,
+            help="Nasabah PEI yang punya minimal 1 transaksi Sell hari ini "
+                 "(tidak selalu berarti wajib RP — cek Loan Existing di tab RP Calculation)."
         )
-        m5.metric(
-            "LR Lolos Rasio", n_lr_lolos,
-            help="Nasabah dengan Rasio After LR < 65%.\n\n"
-                 "**Dihitung:** (Loan setelah RP + Accrued + Nilai Beli dicairkan) ÷ Collateral setelah LR."
+        m3.metric(
+            "Nasabah Transaksi Buy", n_trx_buy,
+            help="Nasabah PEI yang punya minimal 1 transaksi Buy margin hari ini."
         )
 
         sub_rp, sub_lr, sub_sim, sub_sum, sub_exp = st.tabs([
