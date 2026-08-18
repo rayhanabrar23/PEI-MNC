@@ -1289,57 +1289,65 @@ with tab_mnc:
             "⚡ Auto-Adjust LR", "📥 Export",
         ])
 
-        with tab_status:
+                with tab_status:
             st.subheader("📊 Status — RP & LR Final per Nasabah")
-            st.caption("Hanya nasabah dengan transaksi Sell dan/atau Buy yang ditampilkan.")
 
-            status_rows = []
+            rp_status_rows = []
+            lr_status_rows = []
             for sid, data in sid_results.items():
-                if not data.get('has_rp') and not data.get('has_lr'):
-                    continue
+                name_disp = data['name'] + (" ✏️" if data.get('is_simulated') else "")
 
-                if data.get('rp_skipped'):
-                    rp_final, rasio_rp, status_rp = 0.0, None, "⏭ (Loan=0)"
-                elif data.get('has_rp') and data['total_rp_maks'] > 0:
-                    rp_final  = data['total_rp_maks']
-                    rasio_rp  = data.get('rasio_rp')
-                    status_rp = "✅" if lolos_rp(data) else "❌"
-                else:
-                    rp_final, rasio_rp, status_rp = 0.0, None, "-"
+                if data.get('has_rp') and not data.get('rp_skipped') and data['total_rp_maks'] > 0:
+                    rasio_rp = data.get('rasio_rp')
+                    rp_status_rows.append({
+                        'SID': sid,
+                        'Nama': name_disp,
+                        'Available Limit': data['avail_limit'],
+                        'Loan Existing': data['loan_existing'],
+                        'RP Min (ref, 65%)': data.get('total_rp_min_ratio', 0),
+                        'RP Final': data['total_rp_maks'],
+                        'Rasio RP': f"{rasio_rp*100:.2f}%" if rasio_rp is not None else "-",
+                        'Status RP': "✅" if lolos_rp(data) else "❌",
+                    })
 
-                if data.get('has_lr'):
-                    lr_final  = data['max_lr_final']
-                    rasio_lr  = data.get('rasio_lr')
-                    status_lr = "✅" if lolos_lr(data) else "❌"
-                    binding   = data.get('lr_binding', '')
-                else:
-                    lr_final, rasio_lr, status_lr, binding = 0.0, None, "-", "-"
+                if data.get('has_lr') and data['max_lr_final'] >= 0 and data.get('total_buy_val', 0) > 0:
+                    rasio_lr = data.get('rasio_lr')
+                    lr_status_rows.append({
+                        'SID': sid,
+                        'Nama': name_disp,
+                        'Available Limit': data['avail_limit'],
+                        'Loan Existing': data['loan_existing'],
+                        'LR Final': data['max_lr_final'],
+                        'Rasio LR': f"{rasio_lr*100:.2f}%" if rasio_lr is not None else "-",
+                        'Status LR': "✅" if lolos_lr(data) else "❌",
+                        'Binding': data.get('lr_binding', ''),
+                    })
 
-                status_rows.append({
-                    'SID': sid,
-                    'Nama': data['name'] + (" ✏️" if data.get('is_simulated') else ""),
-                    'Available Limit': data['avail_limit'],
-                    'Loan Existing': data['loan_existing'],
-                    'RP Min (ref, 65%)': data.get('total_rp_min_ratio', 0),
-                    'RP Final': rp_final,
-                    'Rasio RP': f"{rasio_rp*100:.2f}%" if rasio_rp is not None else "-",
-                    'Status RP': status_rp,
-                    'LR Final': lr_final,
-                    'Rasio LR': f"{rasio_lr*100:.2f}%" if rasio_lr is not None else "-",
-                    'Status LR': status_lr,
-                    'Binding LR': binding,
-                })
-
-            if not status_rows:
-                st.info("Belum ada nasabah dengan transaksi RP atau LR.")
+            st.markdown("**Status RP**")
+            if not rp_status_rows:
+                st.info("Belum ada nasabah dengan RP terhitung.")
             else:
                 st.dataframe(
-                    pd.DataFrame(status_rows), use_container_width=True, hide_index=True,
+                    pd.DataFrame(rp_status_rows), use_container_width=True, hide_index=True,
                     column_config={
                         'Available Limit': st.column_config.NumberColumn(format="Rp %.0f"),
                         'Loan Existing': st.column_config.NumberColumn(format="Rp %.0f"),
                         'RP Min (ref, 65%)': st.column_config.NumberColumn(format="Rp %.0f"),
                         'RP Final': st.column_config.NumberColumn(format="Rp %.0f"),
+                    },
+                )
+
+            st.divider()
+
+            st.markdown("**Status LR**")
+            if not lr_status_rows:
+                st.info("Belum ada nasabah dengan LR terhitung.")
+            else:
+                st.dataframe(
+                    pd.DataFrame(lr_status_rows), use_container_width=True, hide_index=True,
+                    column_config={
+                        'Available Limit': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'Loan Existing': st.column_config.NumberColumn(format="Rp %.0f"),
                         'LR Final': st.column_config.NumberColumn(format="Rp %.0f"),
                     },
                 )
