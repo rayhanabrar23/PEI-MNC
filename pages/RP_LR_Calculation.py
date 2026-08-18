@@ -264,6 +264,8 @@ def parse_netting_invoice(uploaded_file):
 
     netting = {}
     cid_to_sid = {}
+    sid_to_name = {}
+    has_name_col = 'name' in df.columns
     for _, row in df.iterrows():
         sid, cid, stock = row['sid_key'], row['cid_key'], row['stock_key']
         if not sid or not stock:
@@ -271,6 +273,10 @@ def parse_netting_invoice(uploaded_file):
         vol, val, side = row['tot_vol'], row[val_col], row['bors']
         if cid:
             cid_to_sid[cid] = sid
+        if has_name_col and sid not in sid_to_name:
+            nm = str(row.get('name', '')).strip()
+            if nm and nm.lower() != 'nan':
+                sid_to_name[sid] = nm
         d = netting.setdefault(sid, {}).setdefault(
             stock, {'buy_lot': 0.0, 'sell_lot': 0.0, 'buy_value': 0.0, 'sell_value': 0.0})
         if side == 'B':
@@ -285,7 +291,7 @@ def parse_netting_invoice(uploaded_file):
             d['net_lot']   = d['buy_lot']   - d['sell_lot']
             d['net_value'] = d['buy_value'] - d['sell_value']
 
-    return netting, cid_to_sid
+    return netting, cid_to_sid, sid_to_name
 
 def split_netting(netting: dict):
     """
@@ -1310,7 +1316,7 @@ with tab_mnc:
                         'Status RP': "✅" if lolos_rp(data) else "❌",
                     })
 
-                if data.get('has_lr') and data['max_lr_final'] >= 0 and data.get('total_buy_val', 0) > 0:
+                if data.get('is_pei') and data.get('has_lr') and data.get('total_buy_val', 0) > 0:
                     rasio_lr = data.get('rasio_lr')
                     lr_status_rows.append({
                         'SID': sid,
