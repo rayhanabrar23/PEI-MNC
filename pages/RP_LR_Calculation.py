@@ -1242,22 +1242,21 @@ with tab_mnc:
         op_data       = st.session_state['shared_op_data']
         cl_data       = st.session_state.get('shared_cl_data', {})
 
-        n_rp     = sum(1 for v in sid_results.values() if v.get('has_rp'))
-        n_lr     = sum(1 for v in sid_results.values() if v.get('has_lr'))
-        n_rp_ok  = sum(1 for v in sid_results.values() if lolos_rp(v))
-        n_lr_ok  = sum(1 for v in sid_results.values() if lolos_lr(v))
-        n_rp_fail= sum(1 for v in sid_results.values() if v.get('has_rp') and not v.get('rp_skipped') and not lolos_rp(v))
-        n_lr_fail= sum(1 for v in sid_results.values() if v.get('has_lr') and not lolos_lr(v))
+        n_masuk_rp = sum(1 for v in sid_results.values() if lolos_rp(v) and v['total_rp_maks'] > 0)
+        n_masuk_lr = sum(1 for v in sid_results.values() if lolos_lr(v) and v['max_lr_final'] > 0)
 
-        m1,m2,m3,m4,m5,m6,m7 = st.columns(7)
-        m1.metric("Total Nasabah",  len(sid_results))
-        m2.metric("Ada RP",         n_rp)
-        m3.metric("Ada LR",         n_lr)
-        m4.metric("RP Lolos",       n_rp_ok)
-        m5.metric("LR Lolos",       n_lr_ok)
-        m6.metric("RP/LR Gagal",    f"{n_rp_fail}/{n_lr_fail}",
-                  delta=f"-{n_rp_fail+n_lr_fail}" if (n_rp_fail+n_lr_fail) else None, delta_color="inverse")
-        m7.metric("CL Partisipan",  "✅ LOLOS" if global_result["passed"] else "❌ GAGAL")
+        m1, m2, m3 = st.columns(3)
+        m1.metric("Total Nasabah Terdaftar PEI", len(sid_results))
+        m2.metric(
+            "Masuk RP Final", n_masuk_rp,
+            help="Nasabah dengan transaksi RP yang lolos semua RP-check (RP-1/2/3) "
+                 "dan RP Max > 0 — berarti masuk ke rekap/export Repayment Final."
+        )
+        m3.metric(
+            "Masuk LR Final", n_masuk_lr,
+            help="Nasabah dengan transaksi LR yang lolos semua LR-check (LR-1/2/3) "
+                 "dan Max LR Final > 0 — berarti masuk ke rekap/export Loan Request Final."
+        )
 
         st.divider()
 
