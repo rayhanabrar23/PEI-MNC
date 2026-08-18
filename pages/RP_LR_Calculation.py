@@ -1415,30 +1415,51 @@ with tab_mnc:
         with tab_exp:
             st.subheader("📋 Ringkasan Hasil Validasi")
             st.caption("Hanya nasabah PEI dengan transaksi Sell dan/atau Buy.")
-            sum_rows = []
+
+            sum_rp_rows, sum_lr_rows = [], []
             for sid, d in sid_results.items():
                 if not d.get('is_pei'):
                     continue
-                if not d.get('has_rp') and not d.get('has_lr'):
-                    continue
-                sum_rows.append({
-                    'SID': sid, 'Nama': d['name'],
-                    'Loan Existing': d['loan_existing'], 'Accrued': d['accrued'],
-                    'Avail Limit': d['avail_limit'], 'Coll Awal': d['coll_before_rp'],
-                    'Current Ratio': f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "-",
-                    'RP Min (ref)': d.get('total_rp_min_ratio', 0),
-                    'RP Max (rekomendasi)': d['total_rp_maks'],
-                    'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
-                    'Status RP': "✅" if lolos_rp(d) else ("⏭" if d['rp_skipped'] else ("-" if not d['has_rp'] else "❌")),
-                    'Avail Efektif': d['avail_efektif'], 'Coll After LR': d['coll_after_lr'],
-                    'Max LR Final': d['max_lr_final'], 'Recomendation': d.get('lr_binding',''),
-                    'Status LR': "✅" if lolos_lr(d) else ("-" if not d['has_lr'] else "❌"),
-                })
-            df_sum = pd.DataFrame(sum_rows)
-            st.dataframe(df_sum, use_container_width=True, hide_index=True)
+                if d.get('has_rp') and d['total_rp_maks'] > 0:
+                    sum_rp_rows.append({
+                        'SID': sid, 'Nama': d['name'],
+                        'Loan Existing': d['loan_existing'], 'Accrued': d['accrued'],
+                        'Avail Limit': d['avail_limit'], 'Coll Awal': d['coll_before_rp'],
+                        'Current Ratio': f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "-",
+                        'RP Min (ref)': d.get('total_rp_min_ratio', 0),
+                        'RP Max (rekomendasi)': d['total_rp_maks'],
+                        'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
+                        'Status RP': "✅" if lolos_rp(d) else ("⏭" if d['rp_skipped'] else "❌"),
+                    })
+                if d.get('has_lr') and d.get('total_buy_val', 0) > 0:
+                    sum_lr_rows.append({
+                        'SID': sid, 'Nama': d['name'],
+                        'Avail Limit': d['avail_limit'], 'Avail Efektif': d['avail_efektif'],
+                        'Coll After LR': d['coll_after_lr'], 'Max LR Final': d['max_lr_final'],
+                        'Recomendation': d.get('lr_binding',''),
+                        'Status LR': "✅" if lolos_lr(d) else "❌",
+                    })
+
+            df_sum_rp = pd.DataFrame(sum_rp_rows)
+            df_sum_lr = pd.DataFrame(sum_lr_rows)
+
+            st.markdown("**Ringkasan RP**")
+            if sum_rp_rows:
+                st.dataframe(df_sum_rp, use_container_width=True, hide_index=True)
+            else:
+                st.info("Belum ada nasabah dengan RP terhitung.")
+
+            st.markdown("**Ringkasan LR**")
+            if sum_lr_rows:
+                st.dataframe(df_sum_lr, use_container_width=True, hide_index=True)
+            else:
+                st.info("Belum ada nasabah dengan LR terhitung.")
 
             buf_sum = io.BytesIO()
-            df_sum.to_excel(buf_sum, index=False); buf_sum.seek(0)
+            with pd.ExcelWriter(buf_sum, engine='openpyxl') as wr:
+                df_sum_rp.to_excel(wr, sheet_name='Ringkasan RP', index=False)
+                df_sum_lr.to_excel(wr, sheet_name='Ringkasan LR', index=False)
+            buf_sum.seek(0)
             st.download_button("⬇️ Download Ringkasan (.xlsx)", data=buf_sum,
                 file_name="hasil_validasi.xlsx",
                 mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
