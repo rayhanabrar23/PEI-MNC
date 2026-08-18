@@ -1485,20 +1485,6 @@ with tab_mnc:
             else:
                 st.error(f"❌ GAGAL — {global_result['detail']}")
 
-        
-            with gc2:
-                gagal_lr = [(s,d) for s,d in sid_results.items()
-                            if d.get('has_lr') and not lolos_lr(d)]
-                st.markdown(f"#### 🔴 Gagal LR — {len(gagal_lr)} nasabah")
-                if not gagal_lr: st.success("Semua lolos LR.")
-                for sid, data in gagal_lr:
-                    with st.expander(f"❌ {sid} — {data['name']}"):
-                        if data['max_lr_final'] > 0:
-                            st.warning(f"💡 Max LR Final (dapat dicairkan): {fmt_rp(data['max_lr_final'])}")
-                        for c in data['checks']:
-                            if c['label'].startswith('LR-') and not c['passed']:
-                                st.error(f"**{c['label']}** — {c['detail']}")
-
         with tab_adj:
             st.subheader("⚡ Auto-Adjust LR — Potong ke Max LR Final")
             st.caption("Hanya nasabah PEI yang punya transaksi Buy.")
