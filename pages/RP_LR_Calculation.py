@@ -731,7 +731,7 @@ with tab_pei:
 
         with sub_sim:
             st.subheader("🎛️ Simulator — Ubah Nilai RP, Lihat Dampak ke LR")
-            sid_options = [s for s,d in results.items() if d['total_rp_maks'] > 0 or d['total_buy_val'] > 0 or d['max_lr_final'] > 0]
+            sid_options = [s for s,d in results.items() if d['total_rp_maks'] > 0]
             if not sid_options:
                 st.warning("Tidak ada nasabah dengan transaksi.")
             else:
