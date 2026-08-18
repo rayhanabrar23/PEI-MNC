@@ -544,10 +544,10 @@ with tab_pei:
             help="Nasabah PEI yang punya minimal 1 transaksi Buy margin hari ini."
         )
 
-        sub_rp, sub_lr, sub_sim, sub_sum, sub_exp = st.tabs([
+        sub_rp, sub_sim, sub_lr, sub_sum, sub_exp = st.tabs([
             "📤 RP Calculation",
-            "📥 LR Calculation",
             "🎛️ Simulator RP → LR",
+            "📥 LR Calculation",
             "📋 Summary",
             "📥 Export",
         ])
