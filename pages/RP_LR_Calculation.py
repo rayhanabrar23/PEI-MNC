@@ -1289,7 +1289,7 @@ with tab_mnc:
             "⚡ Auto-Adjust LR", "📥 Export",
         ])
 
-                with tab_status:
+        with tab_status:
             st.subheader("📊 Status — RP & LR Final per Nasabah")
 
             rp_status_rows = []
