@@ -1290,8 +1290,8 @@ with tab_mnc:
 
         st.divider()
 
-        tab_status, tab_sim, tab_global, tab_adj, tab_exp = st.tabs([
-            "📊 Status", "🎛️ Simulator", "🌐 Limit Participant",
+        tab_status, tab_global, tab_adj, tab_exp = st.tabs([
+            "📊 Status", "🌐 Limit Participant",
             "⚡ Auto-Adjust LR", "📥 Export",
         ])
 
@@ -1357,140 +1357,6 @@ with tab_mnc:
                         'LR Final': st.column_config.NumberColumn(format="Rp %.0f"),
                     },
                 )
-
-        with tab_sim:
-            st.subheader("🎛️ Simulator — Ubah Nilai RP, Lihat Dampak ke LR")
-            sid_options = [s for s,d in sid_results.items() if d.get('has_rp') or d.get('has_lr')]
-            if not sid_options:
-                st.warning("Tidak ada nasabah dengan transaksi.")
-            else:
-                sel_sid = st.selectbox("Pilih Nasabah:", sid_options,
-                    format_func=lambda s: f"{s} — {sid_results[s]['name']}", key='mnc_sim_sel')
-                d = st.session_state['sid_results'][sel_sid]
-                if d.get('is_simulated'):
-                    st.success("✏️ Menggunakan nilai simulasi yang sudah disimpan.")
-                c1,c2,c3 = st.columns(3)
-                c1.metric("Loan Outstanding", fmt_rp(d['loan_existing']))
-                c2.metric("Collateral Awal",  fmt_rp(d['coll_before_rp']))
-                c3.metric("Current Ratio", f"{d['loan_existing']/d['coll_before_rp']*100:.2f}%" if d['coll_before_rp'] > 0 else "N/A")
-
-                original_d  = (st.session_state.get('sid_results_original') or {}).get(sel_sid, d)
-                saved_total = st.session_state.get(f'mnc_sim_saved_total_{sel_sid}')
-
-                if d['rp_skipped'] or not d.get('has_rp'):
-                    st.info("Loan Existing = 0 → RP tidak diperlukan." if d['rp_skipped'] else "Tidak ada transaksi jual kemarin.")
-                    total_rp_sim  = 0.0
-                    stocks_ar_sim = dict(original_d.get('stocks_op', d['stocks_op']))
-                else:
-                    rp_ref_rows = original_d.get('rp_detail', d['rp_detail'])
-                    st.caption("Ringkasan saham RP (referensi — lot keluar tetap dihitung penuh)")
-                    df_rp_ref = pd.DataFrame([{
-                        'Saham': rd['stock'], 'Lot Jual': int(rd['lot_sell']),
-                        'Lot OP': int(rd['lot_op']), 'Lot Keluar': int(rd['lot_keluar']),
-                        'Harga': rd['price'], 'Nilai Jual (ref)': rd['rp_min'],
-                    } for rd in rp_ref_rows])
-                    st.dataframe(df_rp_ref, use_container_width=True, hide_index=True)
-
-                    num_key = f"mnc_rp_total_{sel_sid}"
-                    if num_key not in st.session_state:
-                        st.session_state[num_key] = saved_total if saved_total is not None else float(d['total_rp_maks'])
-
-                    st.caption(f"RP Max (rekomendasi, default): {fmt_rp(d['total_rp_maks'])} "
-                               f"| RP Min (ref, 65%): {fmt_rp(d.get('total_rp_min_ratio', 0))}")
-                    total_rp_sim = st.number_input(
-                        "Total RP Adjust", step=1_000_000.0, format="%.0f", key=num_key,
-                    )
-
-                    stocks_ar_sim = dict(original_d.get('stocks_op', d['stocks_op']))
-                    for rd in rp_ref_rows:
-                        if rd['lot_keluar'] > 0:
-                            stocks_ar_sim[rd['stock']] = stocks_ar_sim.get(rd['stock'], 0) - rd['lot_keluar']
-                            if stocks_ar_sim.get(rd['stock'], 0) <= 0:
-                                stocks_ar_sim.pop(rd['stock'], None)
-
-                coll_ar_sim, _ = calc_collateral(stocks_ar_sim, closing_prices, risk_params)
-                loan_ar_sim    = max(original_d.get('loan_existing', d['loan_existing']) - total_rp_sim, 0)
-                rasio_rp_sim   = (loan_ar_sim + d['accrued']) / coll_ar_sim if coll_ar_sim > 0 else None
-
-                st.divider()
-                r1,r2,r3,r4 = st.columns(4)
-                r1.metric("Total RP", fmt_rp(total_rp_sim))
-                r2.metric("Loan After RP", fmt_rp(loan_ar_sim))
-                r3.metric("Coll After RP", fmt_rp(coll_ar_sim))
-                rp_ok = rasio_rp_sim is not None and rasio_rp_sim < RATIO_THRESHOLD
-                r4.metric("Rasio RP", f"{rasio_rp_sim*100:.2f}%" if rasio_rp_sim else "N/A",
-                    delta="✅ LOLOS" if rp_ok else "❌ GAGAL",
-                    delta_color="normal" if rp_ok else "inverse")
-
-                mb_sid = margin_buy.get(sel_sid, {})
-                stocks_al_sim = dict(stocks_ar_sim)
-                for stock, bdata in mb_sid.items():
-                    stocks_al_sim[stock] = stocks_al_sim.get(stock,0) + bdata['lot']
-                coll_al_sim, _ = calc_collateral(stocks_al_sim, closing_prices, risk_params)
-                total_beli_sim = sum(b['value'] for b in mb_sid.values())
-
-                max63_sim, avail_eff_sim, max_final_sim, binding_sim = solve_lr(
-                    coll_al_sim, loan_ar_sim, d['accrued'], d['avail_limit'], total_rp_sim)
-                num_lr_sim   = loan_ar_sim + d['accrued'] + min(total_beli_sim, max_final_sim)
-                rasio_lr_sim = num_lr_sim / coll_al_sim if coll_al_sim > 0 else None
-
-                st.subheader("Dampak ke LR")
-                l1,l2,l3 = st.columns(3)
-                l1.metric("Avail Efektif",  fmt_rp(avail_eff_sim))
-                l2.metric("LR @63%",        fmt_rp(max63_sim))
-                l3.metric("Coll After LR",  fmt_rp(coll_al_sim))
-                l4,l5,l6 = st.columns(3)
-                l4.metric("Numerator LR",   fmt_rp(num_lr_sim))
-                lr_ok = rasio_lr_sim is not None and rasio_lr_sim < RATIO_THRESHOLD
-                l5.metric("Rasio LR", f"{rasio_lr_sim*100:.2f}%" if rasio_lr_sim else "N/A",
-                    delta="✅ LOLOS" if lr_ok else "❌ Perlu dipotong",
-                    delta_color="normal" if lr_ok else "inverse")
-                l6.metric("Max LR Final", fmt_rp(max_final_sim), delta=f"Binding: {binding_sim}")
-
-                st.divider()
-                b1,b2,b3 = st.columns(3)
-                if b1.button("💾 Simpan Simulasi", use_container_width=True, type="primary", key=f'mnc_save_{sel_sid}'):
-                    updated = copy.deepcopy(st.session_state['sid_results'][sel_sid])
-                    updated['is_simulated']    = True
-                    updated['loan_after_rp']   = loan_ar_sim
-                    updated['coll_after_rp']   = coll_ar_sim
-                    updated['coll_after_lr']   = coll_al_sim
-                    updated['ceiling_lr']      = avail_eff_sim
-                    updated['avail_efektif']   = avail_eff_sim
-                    updated['max_lr_63']       = max63_sim
-                    updated['max_lr_65']       = max63_sim
-                    updated['max_lr_final']    = max_final_sim
-                    updated['lr_binding']      = binding_sim
-                    updated['total_rp_maks']   = total_rp_sim
-                    updated['stocks_after_rp'] = stocks_ar_sim
-                    updated['stocks_after_lr'] = stocks_al_sim
-                    new_checks = []
-                    for c in updated['checks']:
-                        if c['label'] == 'RP-3. Rasio After RP < 65%':
-                            new_checks.append({'label': c['label'],
-                                'passed': rasio_rp_sim is not None and rasio_rp_sim < RATIO_THRESHOLD,
-                                'detail': f"✏️ Simulasi | Rasio: {fmt_pct(rasio_rp_sim)} | Loan: {fmt_rp(loan_ar_sim)} | Coll: {fmt_rp(coll_ar_sim)}"})
-                        elif c['label'] == 'LR-3. Nilai Beli ≤ Max LR Final':
-                            new_checks.append({'label': c['label'],
-                                'passed': total_beli_sim <= max_final_sim,
-                                'detail': f"✏️ Simulasi | Nilai Beli: {fmt_rp(total_beli_sim)} vs Max LR Final: {fmt_rp(max_final_sim)}"})
-                        else:
-                            new_checks.append(c)
-                    updated['checks'] = new_checks
-                    st.session_state['sid_results'][sel_sid] = updated
-                    st.session_state[f'mnc_sim_saved_total_{sel_sid}'] = total_rp_sim
-                    st.rerun()
-                if b2.button("↩️ Reset Nasabah Ini", use_container_width=True, key=f'mnc_reset1_{sel_sid}'):
-                    orig = st.session_state.get('sid_results_original', {})
-                    if sel_sid in orig:
-                        st.session_state['sid_results'][sel_sid] = copy.deepcopy(orig[sel_sid])
-                        st.session_state.pop(f"mnc_rp_total_{sel_sid}", None)
-                        st.session_state.pop(f"mnc_sim_saved_total_{sel_sid}", None)
-                        st.rerun()
-                if b3.button("🔄 Reset Semua", use_container_width=True, key='mnc_reset_all'):
-                    orig = st.session_state.get('sid_results_original', {})
-                    if orig:
-                        st.session_state['sid_results'] = copy.deepcopy(orig); st.rerun()
 
         with tab_global:
             st.subheader("Validasi Limit Participant")
