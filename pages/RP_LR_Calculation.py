@@ -869,7 +869,47 @@ with tab_pei:
                         st.rerun()
 
         with sub_sum:
-            st.subheader("📋 Summary Semua Nasabah PEI")
+            st.subheader("📋 Summary — RP & LR Terhitung")
+
+            rp_final_lookup = {}
+            rp_final_df_state = st.session_state.get('rp_final_df')
+            if rp_final_df_state is not None and not rp_final_df_state.empty:
+                rp_final_lookup = dict(zip(
+                    rp_final_df_state['SID'].astype(str).str.strip(),
+                    pd.to_numeric(rp_final_df_state['RP Final'], errors='coerce').fillna(0.0)
+                ))
+
+            recap_rows = []
+            for sid, d in results.items():
+                if d['total_rp_maks'] <= 0 and d['total_buy_val'] <= 0:
+                    continue
+                recap_rows.append({
+                    'SID': sid,
+                    'Nama': d['name'],
+                    'Available Limit': d['avail_limit'],
+                    'Loan Existing': d['loan_existing'],
+                    'RP Min': d.get('total_rp_min_ratio', 0),
+                    'RP Max': d['total_rp_maks'],
+                    'RP Final': rp_final_lookup.get(sid, d['total_rp_maks']),
+                    'LR Final Before Validasi': d['max_lr_final'],
+                })
+
+            if not recap_rows:
+                st.info("Belum ada nasabah dengan RP atau LR terhitung.")
+            else:
+                df_recap = pd.DataFrame(recap_rows)
+                st.dataframe(
+                    df_recap, use_container_width=True, hide_index=True,
+                    column_config={
+                        'Available Limit': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'Loan Existing': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'RP Min': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'RP Max': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'RP Final': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'LR Final Before Validasi': st.column_config.NumberColumn(format="Rp %.0f"),
+                    },
+                )
+
             summary_rows = []
             for sid, d in results.items():
                 summary_rows.append({
