@@ -1414,8 +1414,13 @@ with tab_mnc:
 
         with tab_exp:
             st.subheader("📋 Ringkasan Hasil Validasi")
+            st.caption("Hanya nasabah PEI dengan transaksi Sell dan/atau Buy.")
             sum_rows = []
             for sid, d in sid_results.items():
+                if not d.get('is_pei'):
+                    continue
+                if not d.get('has_rp') and not d.get('has_lr'):
+                    continue
                 sum_rows.append({
                     'SID': sid, 'Nama': d['name'],
                     'Loan Existing': d['loan_existing'], 'Accrued': d['accrued'],
@@ -1426,7 +1431,7 @@ with tab_mnc:
                     'Loan After RP': d['loan_after_rp'], 'Coll After RP': d['coll_after_rp'],
                     'Status RP': "✅" if lolos_rp(d) else ("⏭" if d['rp_skipped'] else ("-" if not d['has_rp'] else "❌")),
                     'Avail Efektif': d['avail_efektif'], 'Coll After LR': d['coll_after_lr'],
-                    'Max LR Final': d['max_lr_final'], 'Binding': d.get('lr_binding',''),
+                    'Max LR Final': d['max_lr_final'], 'Recomendation': d.get('lr_binding',''),
                     'Status LR': "✅" if lolos_lr(d) else ("-" if not d['has_lr'] else "❌"),
                 })
             df_sum = pd.DataFrame(sum_rows)
@@ -1483,27 +1488,4 @@ with tab_mnc:
             with e2:
                 st.download_button("⬇️ Loan Request (.xlsx)", data=gen_lr_excel(),
                     file_name=f"Loan Request {today}.xlsx", use_container_width=True,
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-
-            st.divider()
-            st.subheader("📅 Rekap Belum Settled — Untuk Besok")
-            def gen_rekap(mode):
-                rows = []
-                for sid, d in sid_results.items():
-                    if mode == 'rp' and lolos_rp(d) and d['total_rp_maks'] > 0:
-                        rows.append({"SID":sid,"Name":d["name"],"Repayment Value":d["total_rp_maks"]})
-                    elif mode == 'lr' and lolos_lr(d) and d['max_lr_final'] > 0:
-                        rows.append({"SID":sid,"Name":d["name"],"Loan Value":d["max_lr_final"]})
-                buf = io.BytesIO()
-                pd.DataFrame(rows).to_excel(buf, index=False); buf.seek(0)
-                return buf
-
-            r1, r2 = st.columns(2)
-            with r1:
-                st.download_button("⬇️ Rekap RP Belum Settled", data=gen_rekap('rp'),
-                    file_name=f"RP Belum Settled {today}.xlsx", use_container_width=True, type="primary",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
-            with r2:
-                st.download_button("⬇️ Rekap LR Belum Settled", data=gen_rekap('lr'),
-                    file_name=f"LR Belum Settled {today}.xlsx", use_container_width=True, type="primary",
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet")
