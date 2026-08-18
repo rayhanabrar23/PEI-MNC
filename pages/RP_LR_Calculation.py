@@ -289,20 +289,22 @@ def parse_netting_invoice(uploaded_file):
 
 def split_netting(netting: dict):
     """
-    Pecah hasil netting jadi net_buy & net_sell per SID, dengan bentuk {sid: {stock: {lot, value}}}
-      net_lot > 0 -> net Beli -> basis LR
-      net_lot < 0 -> net Jual -> basis RP (lot & value disimpan positif)
-      net_lot == 0 -> tidak ada posisi net, dilewati
+    Pecah hasil netting jadi net_buy & net_sell per SID + saham.
+    PENTING: Sell (basis RP) dan Buy (basis LR) diproses INDEPENDEN — tidak saling
+    menetralkan meski volume sama. RP (jual saham -> bayar utang, mengurangi kolateral
+    & loan) dan LR (beli saham -> butuh pembiayaan baru) adalah dua kewajiban terpisah
+    yang bisa sama-sama terjadi untuk saham yang sama di hari yang sama (mis. nasabah
+    jual BMTR 22.500.000 lot lalu beli BMTR 22.500.000 lot lagi di hari yang sama —
+    dua-duanya harus tetap tercatat, bukan saling meniadakan).
     """
     net_buy, net_sell = {}, {}
     for sid, stocks in netting.items():
         for stock, d in stocks.items():
-            if d['net_lot'] > 0:
-                net_buy.setdefault(sid, {})[stock] = {'lot': d['net_lot'], 'value': d['net_value']}
-            elif d['net_lot'] < 0:
-                net_sell.setdefault(sid, {})[stock] = {'lot': -d['net_lot'], 'value': -d['net_value']}
+            if d['buy_lot'] > 0:
+                net_buy.setdefault(sid, {})[stock] = {'lot': d['buy_lot'], 'value': d['buy_value']}
+            if d['sell_lot'] > 0:
+                net_sell.setdefault(sid, {})[stock] = {'lot': d['sell_lot'], 'value': d['sell_value']}
     return net_buy, net_sell
-
 # ─────────────────────────────────────────────
 # UPLOAD FILE SHARED (selalu tampil di atas)
 # ─────────────────────────────────────────────
