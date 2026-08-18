@@ -428,13 +428,18 @@ with tab_pei:
                             pei_sids.add(sid)
 
                     for sid in pei_sids:
-                        loan_info = op_loan.get(sid, {'loan_existing':0,'accrued_interest':0,'name':sid})
+                        loan_info = op_loan.get(sid, {'loan_existing':0,'accrued_interest':0,'name':None})
                         stocks_op = op_stocks.get(sid, {})
                         loan_ex   = loan_info['loan_existing']
                         accrued   = loan_info['accrued_interest']
                         # Available Limit HARUS dari file Credit Limit — field di OP selalu 0.
                         avail_lim = cl_data.get(sid, {}).get('available_limit', 0.0)
-                        name      = loan_info['name']
+                        # Nama: OP dulu -> SID Client (sumber pendaftaran PEI) -> Credit Limit -> fallback SID
+                        cid_for_sid = sid_to_cid.get(sid, '')
+                        name = (loan_info.get('name')
+                                or cid_to_name.get(cid_for_sid, '')
+                                or cl_data.get(sid, {}).get('name')
+                                or sid)
 
                         sell_stocks = sell_reg_by_sid.get(sid, {})
                         buy_stocks  = buy_reg_by_sid.get(sid, {})
