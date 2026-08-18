@@ -667,8 +667,16 @@ with tab_pei:
                     rp_final = rp_final_map.get(sid, 0.0)
 
                     loan_after_rp_new = max(d['loan_existing'] - rp_final, 0)
-                    max_lr_63_new, avail_efektif_new, max_lr_final_new, binding_new = solve_lr(
-                        d['coll_after_lr'], loan_after_rp_new, d['accrued'], d['avail_limit'], rp_final)
+
+                    if rp_final > 0:
+                        max_lr_63_new, avail_efektif_new, max_lr_final_new, binding_new = solve_lr(
+                            d['coll_after_lr'], loan_after_rp_new, d['accrued'], d['avail_limit'], rp_final)
+                    else:
+                        # Tanpa RP: avail limit langsung ikut file Credit Limit, tidak direcalculate
+                        avail_efektif_new = d['avail_limit']
+                        max_lr_63_new, _, max_lr_final_new, binding_new = solve_lr(
+                            d['coll_after_lr'], loan_after_rp_new, d['accrued'], d['avail_limit'], rp_final)
+
                     numerator_lr_new = loan_after_rp_new + d['accrued'] + min(d['total_buy_val'], max_lr_final_new)
                     rasio_lr_new = numerator_lr_new / d['coll_after_lr'] if d['coll_after_lr'] > 0 else None
 
@@ -677,6 +685,8 @@ with tab_pei:
                         for stock, bd in d['buy_stocks'].items()
                     )
 
+                    avail_delta = avail_efektif_new - d['avail_limit']
+
                     lr_rows.append({
                         'SID': sid,
                         'Nama': d['name'],
@@ -684,6 +694,8 @@ with tab_pei:
                         'Nilai Beli': d['total_buy_val'],
                         'RP Final (dari upload)': rp_final,
                         'Loan After RP': loan_after_rp_new,
+                        'Avail Limit (Awal)': d['avail_limit'],
+                        'Δ Avail Limit (RP)': avail_delta,
                         'Avail Efektif': avail_efektif_new,
                         'LR @63%': max_lr_63_new,
                         'Max LR Final (rekomendasi)': max_lr_final_new,
@@ -699,12 +711,14 @@ with tab_pei:
                     use_container_width=True,
                     hide_index=True,
                     disabled=['SID', 'Nama', 'Saham (Lot Beli)', 'Nilai Beli', 'RP Final (dari upload)',
-                              'Loan After RP', 'Avail Efektif', 'LR @63%', 'Max LR Final (rekomendasi)',
-                              'Binding', 'Rasio LR (jika full)'],
+                              'Loan After RP', 'Avail Limit (Awal)', 'Δ Avail Limit (RP)', 'Avail Efektif',
+                              'LR @63%', 'Max LR Final (rekomendasi)', 'Binding', 'Rasio LR (jika full)'],
                     column_config={
                         'Nilai Beli': st.column_config.NumberColumn(format="Rp %.0f"),
                         'RP Final (dari upload)': st.column_config.NumberColumn(format="Rp %.0f"),
                         'Loan After RP': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'Avail Limit (Awal)': st.column_config.NumberColumn(format="Rp %.0f"),
+                        'Δ Avail Limit (RP)': st.column_config.NumberColumn(format="Rp %.0f"),
                         'Avail Efektif': st.column_config.NumberColumn(format="Rp %.0f"),
                         'LR @63%': st.column_config.NumberColumn(format="Rp %.0f"),
                         'Max LR Final (rekomendasi)': st.column_config.NumberColumn(format="Rp %.0f"),
